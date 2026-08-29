@@ -157,7 +157,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   twice-a-year DST note; why it must be asked interactively (cron sessions cannot manage
   cron jobs).
 
-- [ ] **T1.5 Integration test — `tests/integration/test_day_flow.py`** — a full day on a
+- [x] **T1.5 Integration test — `tests/integration/test_day_flow.py`** — a full day on a
   tmp DB: seed 4 members → 4 check-ins (one corrected, assert upsert) → `checkins_by_date`
   returns 4 → set digest settings → assert `cron_relay` schedule strings for Guayaquil and
   Berlin members at a winter instant and a summer instant.
@@ -326,6 +326,14 @@ Pi/human; the agent only produces/refreshes the verification script.
   (7) _timezone_error duplicates scheduling's except-tuple — shared validate_timezone
   helper is a refactor candidate; (8) _missing_required call in member_add is dead weight
   (deletable); (9) "remains paused" summary nit when the member never had a job.
+- 2026-08-29 T1.5 — review verdict: no hard violations (spec axis re-verified all pinned
+  literals with fresh zoneinfo; both axes confirm real-stack composition, only the clock
+  faked). First-run PASS of the integration suite (legitimate: stack was TDD'd task by
+  task). Judgement calls: (1) "a full day" is 4 independent tests each reseeding a fresh
+  tmp DB (step-wise, not one continuous flow — documented in the test docstring);
+  (2) nudge_limit set beyond the named digest settings (harmless); (3) away-and-back wake
+  pairs as relay-producing mechanics (roster stays at seeded 4); (4) relay_schedule
+  helper walks the contract nesting with isinstance asserts.
 - 2026-08-29 T0.14 — review verdict: no hard violations (spec axis verified upstream
   fidelity live: gateway command byte-identical to upstream compose at pin 5fc308a7,
   mounts match README exactly, HERMES_REF matches build URL byte-for-byte, secrets render
