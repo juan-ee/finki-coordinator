@@ -1,0 +1,11 @@
+# Runtime state & secrets (AGENTS.md: never touch data/**, never commit .env)
+data/
+.env
+backups/
+
+# Python & tool caches
+__pycache__/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
