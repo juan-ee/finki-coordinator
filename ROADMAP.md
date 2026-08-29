@@ -136,7 +136,7 @@ Pi/human; the agent only produces/refreshes the verification script.
 
 ## Phase 1 — Core bot
 
-- [ ] **T1.1 `DOC` — `prompts/persona.md`** (→ SOUL.md) — group-PM voice rewritten from
+- [x] **T1.1 `DOC` — `prompts/persona.md`** (→ SOUL.md) — group-PM voice rewritten from
   OpenExecutive `executive_persona.py` (operator tone, 2–3 key variables, end with
   "so, what do we do next"). Must encode: relay `cron_relay` **verbatim** (never recompute
   schedules), read `docs/product/brief.md` before major asks, editorial policy
