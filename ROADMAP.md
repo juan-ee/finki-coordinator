@@ -147,7 +147,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   ask done/next/blockers → `checkin_submit` → confirm + surface relevant teammates'
   blockers. One worked example dialogue embedded.
 
-- [ ] **T1.3 `DOC` — `prompts/skills/digest/SKILL.md`** — 17:00 job: `checkins_by_date`
+- [x] **T1.3 `DOC` — `prompts/skills/digest/SKILL.md`** — 17:00 job: `checkins_by_date`
   → `kanban_list` → inbox count → write `journal/YYYY-MM-DD.md` (format template embedded:
   Check-ins table with ✅/⚠️, Board moves, Inbox, Flags) → post condensed summary to the
   delivery chat → run `scripts/sync.sh` (on-demand beat, proposal §3).
