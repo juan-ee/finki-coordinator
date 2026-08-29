@@ -116,7 +116,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   Tests: `tests/unit/test_generate_agents_md.py` — golden-file render from fixture DB
   (contains all member names/timezones + all query-map bullets); rerun is byte-identical.
 
-- [ ] **T0.13 `scripts/setup.sh`** — `set -euo pipefail`; steps: check required `.env`
+- [x] **T0.13 `scripts/setup.sh`** — `set -euo pipefail`; steps: check required `.env`
   keys; validate `config/config.yaml` via `python -m coordinator.config validate`;
   write rclone.conf from env (client id/secret/refresh, remote, root folder id);
   install `prompts/persona.md` → `${HERMES_HOME:-$HOME/.hermes}/SOUL.md`; apply Hermes
@@ -326,6 +326,18 @@ Pi/human; the agent only produces/refreshes the verification script.
   (7) _timezone_error duplicates scheduling's except-tuple — shared validate_timezone
   helper is a refactor candidate; (8) _missing_required call in member_add is dead weight
   (deletable); (9) "remains paused" summary nit when the member never had a job.
+- 2026-08-29 T0.13 — review verdict: no hard violations (spec axis probed all seven
+  steps incl. 0600 perms on rclone.conf and zero writes under dry-run). Judgement calls:
+  (1) bare `python` for the config-validate delegation (spec-literal) vs the repo's
+  `uv run` convention — needs the coordinator venv on PATH; candidate: `uv run python`;
+  (2) heredoc interpolates the refresh token unquoted into rclone's token JSON — a token
+  containing quotes/backslashes would silently corrupt the conf (rclone tokens are
+  typically URL-safe; low risk); (3) RCLONE_CONFIG_PATH override knob is mild YAGNI;
+  (4) hermes config set triple appears 3x (dry-run echo, fallback block, real calls) —
+  drift risk; (5) dry-run stanza hand-copied rather than derived from one builder;
+  (6) test REQUIRED_ENV mirrors the script REQUIRED_KEYS list (drift would shrink the
+  no-leak scan); (7) env-keys-from-environment reading (compose loads .env at runtime)
+  — a source-.env-if-present convenience was considered and left out (contract change).
 - 2026-08-29 T0.12 — review verdict: no hard violations (spec axis probed: byte-identical
   reruns incl. mixed-case names, clean overwrite, folder tree matches proposal §3
   entry-for-entry, telegram_id never rendered). Judgement calls: (1) roster ordering is
