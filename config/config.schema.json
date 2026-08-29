@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Hermes coordinator boot configuration",
+  "description": "Boot defaults for the Hermes coordinator (proposal.md §2). Secrets live in .env, runtime state lives in the SQLite database — never here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["project", "telegram", "model", "rag", "log_level"],
+  "properties": {
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "drive_root", "timezone"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "drive_root": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Folder inside the Shared Drive (rclone bisync root)."
+        },
+        "timezone": {
+          "type": "string",
+          "pattern": "^[A-Z][a-z_][A-Za-z_]*/[A-Z][a-z_][A-Za-z_]*$",
+          "description": "IANA-looking Area/City anchor for human-facing times; probed with zoneinfo when the config is loaded."
+        }
+      }
+    },
+    "telegram": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["group_id"],
+      "properties": {
+        "group_id": {
+          "type": "string",
+          "description": "Team group chat id; empty = no group broadcasts."
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "default_model"],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "default_model": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Model id; setup.sh writes it into Hermes twice (global default + cron.model pin). No budget knob: the cap is the OpenRouter per-key limit."
+        }
+      }
+    },
+    "rag": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "chunk_size", "embed_model"],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "chunk_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "embed_model": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "log_level": {
+      "type": "string"
+    }
+  }
+}

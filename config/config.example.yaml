@@ -1,0 +1,17 @@
+# Boot defaults for the Hermes coordinator — copy to config/config.yaml.
+# Validated against config/config.schema.json (setup.sh and CI); changes need a restart.
+project:
+  name: my-project
+  drive_root: "MyProject"          # folder inside the Shared Drive
+  timezone: Europe/Berlin          # anchor for human-facing times (digest_time)
+telegram:
+  group_id: ""                     # optional; empty = no group broadcasts
+model:
+  provider: openrouter
+  default_model: nousresearch/hermes-4-70b
+  # No budget knob here: the $20 cap is the OpenRouter per-key limit (console).
+rag:
+  enabled: false                   # optional escalation layer (phase 5)
+  chunk_size: 800
+  embed_model: bge-small-en-v1.5
+log_level: info
