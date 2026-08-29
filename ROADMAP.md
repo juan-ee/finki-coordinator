@@ -152,7 +152,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   Check-ins table with ✅/⚠️, Board moves, Inbox, Flags) → post condensed summary to the
   delivery chat → run `scripts/sync.sh` (on-demand beat, proposal §3).
 
-- [ ] **T1.4 `DOC` — `prompts/skills/schedules.md`** — "recalculate all check-in
+- [x] **T1.4 `DOC` — `prompts/skills/schedules.md`** — "recalculate all check-in
   schedules" procedure (member_list → build edit relays for every active member → relay);
   twice-a-year DST note; why it must be asked interactively (cron sessions cannot manage
   cron jobs).
