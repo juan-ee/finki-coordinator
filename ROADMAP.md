@@ -66,7 +66,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   `submit` same member+date replaces row (assert new values + one row); `active=0` filtered
   from list but still gettable; settings default returned then overridden.
 
-- [ ] **T0.7 `src/coordinator/scheduling.py`** *(crown jewel — write tests first)* —
+- [x] **T0.7 `src/coordinator/scheduling.py`** *(crown jewel — write tests first)* —
   pure functions, no I/O:
   `wake_to_cron_expr(wake: "HH:MM", tz: IANA, at_utc: datetime) -> "M H * * *"` (UTC),
   `validate_wake`, `SchedulingError`. DST resolved from `at_utc` only.
@@ -301,3 +301,12 @@ Pi/human; the agent only produces/refreshes the verification script.
   (7) minor test duplication + assert-narrowings vanish under -O.
 - 2026-08-29 T0.6 sanctioned addition — CheckinsRepo.by_date(date) ordered by member_id:
   minimal read required by the task's CRUD round-trip tests and T0.8/T1.3 digest flow.
+- 2026-08-29 T0.7 — review verdict: no hard violations; spec axis independently recomputed
+  all zoneinfo ground truth (Berlin flips exactly at 2026-03-29T01:00Z and
+  2026-10-25T01:00Z; module matches to the second; adversarial +13/−9/+05:45 wakes and
+  wraparounds all match an independent recompute). Judgement calls: (1) minute mapping
+  uses floor division — would misround only sub-minute historical LMT offsets (modern
+  zones whole-minute, out of scope); (2) duplicated bad-wake parametrize literals in
+  tests; (3) zone-lookup wrap pattern echoed in config.py vs scheduling.py (different
+  concerns, not merged). Any timezone-aware at_utc accepted (not just UTC-constructed) —
+  documented contract.
