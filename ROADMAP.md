@@ -109,7 +109,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   Tests: `tests/unit/test_seed_file.py` — seed parses; every tz resolvable via zoneinfo;
   wakes match `^([01]\d|2[0-3]):[0-5]\d$`.
 
-- [ ] **T0.12 `scripts/generate_agents_md.py`** — renders the **runtime**
+- [x] **T0.12 `scripts/generate_agents_md.py`** — renders the **runtime**
   `data/project/AGENTS.md`: roster table (from members DB), folder structure block,
   query map (mission → `docs/product/brief.md` first; decisions → docs/decisions/ …),
   editorial policy summary. Deterministic output; overwrite in place.
@@ -326,6 +326,16 @@ Pi/human; the agent only produces/refreshes the verification script.
   (7) _timezone_error duplicates scheduling's except-tuple — shared validate_timezone
   helper is a refactor candidate; (8) _missing_required call in member_add is dead weight
   (deletable); (9) "remains paused" summary nit when the member never had a job.
+- 2026-08-29 T0.12 — review verdict: no hard violations (spec axis probed: byte-identical
+  reruns incl. mixed-case names, clean overwrite, folder tree matches proposal §3
+  entry-for-entry, telegram_id never rendered). Judgement calls: (1) roster ordering is
+  case-sensitive (BINARY collation — same known T0.6 note); (2) render() lives in
+  scripts/ outside mypy-strict scope (tests importlib-load the script); (3) hardcoded
+  example date 2026-08-28 in the static structure block (deterministic but stale-prone
+  prose); (4) golden pattern triples the static body (independent-source-of-truth
+  intended; GOLDEN_EMPTY could derive from GOLDEN); (5) EXPECTED_* loops re-assert what
+  golden equality already pins (dual maintenance on wording edits); (6) empty-roster
+  placeholder + unreadable-DB error-path test beyond spec (defensible).
 - 2026-08-29 T0.10 — review verdict: no hard violations (both axes; CLI probed end-to-end:
   nested mkdir, seed-once marker, all-or-nothing with no marker on failure). Judgement
   calls: (1) _db_telegram_id_conflicts issues member-table SQL directly in the script —
