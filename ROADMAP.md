@@ -90,7 +90,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   format → `ok: False` + actionable summary; member self-service rule: handler cannot
   deactivate via `member_add` (no such arg).
 
-- [ ] **T0.9 `src/coordinator/hermes_plugin.py`** — thin adapter: `TOOL_SPECS`
+- [x] **T0.9 `src/coordinator/hermes_plugin.py`** — thin adapter: `TOOL_SPECS`
   (name → JSON schema dict + handler ref + `toolset="coordinator"`), `register(ctx)`
   calling `ctx.register_tool(...)`. Import of Hermes guarded (adapter only).
   Tests: `tests/unit/test_hermes_plugin.py` — `FakeCtx` records exactly 7 registrations;
@@ -326,3 +326,13 @@ Pi/human; the agent only produces/refreshes the verification script.
   (7) _timezone_error duplicates scheduling's except-tuple — shared validate_timezone
   helper is a refactor candidate; (8) _missing_required call in member_add is dead weight
   (deletable); (9) "remains paused" summary nit when the member never had a job.
+- 2026-08-29 T0.9 — review verdict: no hard violations (spec axis probed: zero schema
+  drift both directions vs handlers, dep order correct, identity passthrough, module
+  imports with Hermes absent). Design note: "import of Hermes guarded" implemented as
+  ZERO Hermes import + HermesContext Protocol — the stronger structural form; no
+  try/except ImportError exists (nothing to guard). Judgement calls: (1) payload field
+  sets live in 3 places (handlers._*_FIELDS, TOOL_SPECS schemas, test EXPECTED_FIELDS) —
+  drift is pinned by tests; a single-source refactor candidate; (2) register() returns
+  list[str] of names (spec silent; no consumer yet); (3) the 4-dep kwargs clump repeats
+  across dispatch tests (helper absorbs partially); (4) "hermes" not in sys.modules
+  assertion is suite-order dependent if a real hermes package ever enters the venv.
