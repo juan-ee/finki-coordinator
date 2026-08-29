@@ -19,7 +19,7 @@ Pi/human; the agent only produces/refreshes the verification script.
 
 ## Phase 0 — Foundation
 
-- [ ] **T0.1 Repo scaffolding (uv)** — `pyproject.toml` (package `coordinator` under
+- [x] **T0.1 Repo scaffolding (uv)** — `pyproject.toml` (package `coordinator` under
   `src/`, deps: `jsonschema`, `PyYAML`; dev: `pytest`, `pytest-cov`, `ruff`, `mypy`),
   `uv.lock` committed + `.python-version` (3.11), `Makefile` (`install/test/lint/type/check`,
   every target wrapping `uv run` per AGENTS.md Commands), `.gitignore` (`data/`, `.env`,
@@ -229,3 +229,13 @@ Pi/human; the agent only produces/refreshes the verification script.
 ## Notes log
 
 *(agents append here: date, task, deviation/observation)*
+
+- 2026-08-29 T0.1 — review verdict: no hard violations; judgement calls recorded: (1) version
+  string lives in both pyproject.toml and src/coordinator/__init__.py and the smoke test
+  asserts only str/non-empty (drift would pass) — consider hatch dynamic version or an
+  equality assert in a later task; (2) [tool.ruff] extend-exclude=["*.md"] is a no-op
+  (ruff only lints Python) — harmless, may be dropped later; (3) .gitignore adds
+  .pytest_cache/.mypy_cache/.ruff_cache beyond the spec list (orchestrator-directed:
+  caches must never be committed); (4) smoke test asserts isinstance(str)+truthy rather
+  than == pyproject version (covered by (1)); license uses file= form, PEP 639 SPDX
+  string is cosmetic alternative.
