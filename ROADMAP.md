@@ -97,7 +97,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   schemas well-formed (`type/properties/required`); dispatch wires to the right handler;
   result dicts pass through untouched.
 
-- [ ] **T0.10 `scripts/init_db.py`** — CLI `--db PATH [--seed config/members.seed.yaml]`:
+- [x] **T0.10 `scripts/init_db.py`** — CLI `--db PATH [--seed config/members.seed.yaml]`:
   mkdir -p, connect+migrate, seed members once (marker `seeded_at` in settings), exit 0
   idempotently. Tests: `tests/unit/test_init_db.py` — fresh seed inserts N members;
   second run = no duplicates; run without seed = empty members table.
@@ -326,6 +326,19 @@ Pi/human; the agent only produces/refreshes the verification script.
   (7) _timezone_error duplicates scheduling's except-tuple — shared validate_timezone
   helper is a refactor candidate; (8) _missing_required call in member_add is dead weight
   (deletable); (9) "remains paused" summary nit when the member never had a job.
+- 2026-08-29 T0.10 — review verdict: no hard violations (both axes; CLI probed end-to-end:
+  nested mkdir, seed-once marker, all-or-nothing with no marker on failure). Judgement
+  calls: (1) _db_telegram_id_conflicts issues member-table SQL directly in the script —
+  second owner of member SQL; a repo method (filter_existing_telegram_ids) is the fix
+  candidate; (2) seed-once probe depends on seeded_at staying OUT of repositories.DEFAULTS
+  (get() fallback would silently always-skip) — comment documents the trap; (3) hardening
+  beyond spec (dup-in-seed, type validation, DB-conflict check + 4th test) logged per
+  rule 8; (4) migration failures print under the "seeding failed" prefix (misleading);
+  (5) empty seed file stamps the marker (spec-consistent); (6) rerun with a moved/typo'd
+  --seed path exits 0 silently (marker short-circuits before file read); (7) two loose
+  test assertions (stderr != "", "seeded_at" in stdout).
+- 2026-08-29 T0.10 ops note — first dispatch attempt (7b96ba2e) failed pre-work (agent
+  died after skill load; zero repo changes); fresh retry (8e60459e) completed cleanly.
 - 2026-08-29 T0.9 — review verdict: no hard violations (spec axis probed: zero schema
   drift both directions vs handlers, dep order correct, identity passthrough, module
   imports with Hermes absent). Design note: "import of Hermes guarded" implemented as
