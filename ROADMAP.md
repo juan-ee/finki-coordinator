@@ -27,7 +27,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   Tests: `tests/test_smoke.py::test_package_imports` (import coordinator, assert `__version__`).
   Acceptance: `uv sync && make check` exits 0.
 
-- [ ] **T0.2 CI workflow** — `.github/workflows/ci.yml`: on push/PR: `astral-sh/setup-uv`
+- [x] **T0.2 CI workflow** — `.github/workflows/ci.yml`: on push/PR: `astral-sh/setup-uv`
   → `uv sync --frozen` → `uv run make lint && uv run make type && uv run make test` +
   a step validating `config/config.example.yaml` against `config/config.schema.json` via
   `uv run python -m coordinator.config validate`.
@@ -239,3 +239,15 @@ Pi/human; the agent only produces/refreshes the verification script.
   caches must never be committed); (4) smoke test asserts isinstance(str)+truthy rather
   than == pyproject version (covered by (1)); license uses file= form, PEP 639 SPDX
   string is cosmetic alternative.
+- 2026-08-29 T0.2 — review verdict: no hard violations; judgement calls recorded:
+  (1) ci.yml's run chain "uv run make lint && make type && make test" is pinned in three
+  places (ci.yml, Makefile composition, test constant) — spec-driven, tolerated;
+  (2) python-version "3.11" pin in setup-uv duplicates .python-version (which setup-uv
+  reads natively) and test_ci.py hard-asserts it — drift risk on a future Python bump;
+  (3) validate step (python -m coordinator.config validate) is intentionally red until
+  T0.3/T0.4 land those files — roadmap-sequencing artifact, repo has no remote yet;
+  (4) test reads a repo-tree file (ci.yml) though AGENTS.md tests note says "tmp paths
+  only" — read-only/deterministic/required by acceptance, read as secrets/IO-safety
+  clause; (5) workflow[True] key name (PyYAML YAML-1.1 quirk) is commented inline;
+  (6) orchestrator protocol marks checkboxes in a post-review chore commit, so rule 2's
+  "update checkbox" lands separately from the feat commit by design.
