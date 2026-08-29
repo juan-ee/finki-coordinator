@@ -34,7 +34,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   Acceptance: workflow commands are exactly the Makefile targets; YAML parses
   (`tests/test_ci.py::test_workflow_yaml_parses`).
 
-- [ ] **T0.3 Config JSON Schema + example** — `config/config.schema.json`
+- [x] **T0.3 Config JSON Schema + example** — `config/config.schema.json`
   (draft 2020-12; keys/semantics per `proposal.md` §2: `project{name,drive_root,timezone}`,
   `telegram{group_id}`, `model{provider,default_model}` (no budget key), `rag{enabled,
   chunk_size,embed_model}`, `log_level`; `additionalProperties: false`; `timezone` pattern
@@ -251,3 +251,15 @@ Pi/human; the agent only produces/refreshes the verification script.
   clause; (5) workflow[True] key name (PyYAML YAML-1.1 quirk) is commented inline;
   (6) orchestrator protocol marks checkboxes in a post-review chore commit, so rule 2's
   "update checkbox" lands separately from the feat commit by design.
+- 2026-08-29 T0.3 — review verdict: no hard violations (both axes); judgement calls:
+  (1) timezone pattern is an intentional two-segment approximation — rejects real zones
+  like America/Argentina/Buenos_Aires, Etc/UTC, US/Hawaii, bare UTC and accepts junk like
+  Xx/Yy; spec wording "IANA-looking Area/City" supports it; authoritative check is T0.4's
+  zoneinfo probe; (2) micro-constraints beyond spec: minLength:1 on five strings,
+  minimum:1 bans chunk_size 0 (not just negatives), additionalProperties:false nested
+  (spec arguably root-only) — all tighten, none loosen; (3) log_level is a bare string
+  (no minLength/enum) — empty string validates; (4) budget-key rationale duplicated in
+  example yaml + schema description; (5) cosmetic: redundant deepcopy in test, three
+  schema JSON lines exceed 100 cols (ruff doesn't lint JSON).
+- 2026-08-29 housekeeping — .DS_Store added to .gitignore (macOS artifact appeared
+  untracked; prevent accidental commit).
