@@ -78,7 +78,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   `25:00`, `8:00` (no zero-pad), `Mars/Olympus` raise SchedulingError.
   Acceptance: zero `datetime.now()` in module.
 
-- [ ] **T0.8 `src/coordinator/handlers.py`** — the 7 tool handlers
+- [x] **T0.8 `src/coordinator/handlers.py`** — the 7 tool handlers
   (`member_add, member_update, member_list, checkin_submit, checkins_by_date,
   setting_get, setting_set`) as plain functions taking repo Protocols + `Clock`.
   Payload validation manual + typed; result dict per AGENTS.md contract; schedule changes
@@ -310,3 +310,19 @@ Pi/human; the agent only produces/refreshes the verification script.
   tests; (3) zone-lookup wrap pattern echoed in config.py vs scheduling.py (different
   concerns, not merged). Any timezone-aware at_utc accepted (not just UTC-constructed) —
   documented contract.
+- 2026-08-29 T0.8 — review verdict: 1 hard finding, FIXED in fix commit 6b86ba8 (delta
+  re-reviewed: FIXED, no regressions): re-deactivating an already-inactive member re-emitted
+  the pause relay, breaching the contract's "cron_relay present when a schedule changed";
+  fix diffs active against the stored row; combined wake+deactivate on already-inactive
+  now emits no relay (wake still persisted; suppression documented in handler comment).
+  Judgement calls: (1) tz-only change emits an edit relay (schedule depends on tz) —
+  beyond the literal "edit on wake change", kept; (2) wake edit on an INACTIVE member
+  emits an edit relay for a paused job — literal-spec, kept; reactivate-after-pause
+  produces no relay (no resume action in this task) — future need; (3) member_list
+  defaults to active-only and never exposes telegram_id (DM privacy); (4) digest-job
+  relay for setting_set deliberately absent from T0.8 — future need; (5) uniform 5-param
+  handler signature leaves unused deps in some handlers (T0.9 mechanical dispatch);
+  (6) payload casts (~15) would dissolve into a validate-into-typed-dataclass refactor;
+  (7) _timezone_error duplicates scheduling's except-tuple — shared validate_timezone
+  helper is a refactor candidate; (8) _missing_required call in member_add is dead weight
+  (deletable); (9) "remains paused" summary nit when the member never had a job.
