@@ -230,3 +230,43 @@ def test_main_validate_defaults_are_cwd_relative(
     exit_code = main(["validate"])
 
     assert exit_code == 0
+
+
+# --- phase-gate red-team regressions (C, D, E) -----------------------------------------
+
+
+def test_malformed_schema_json_raises_config_error(
+    tmp_path: pathlib.Path,
+    example: dict,
+) -> None:
+    """A syntactically broken schema file raises ConfigError, not a raw JSONDecodeError."""
+    config_path = _write_variant(tmp_path, example)
+    schema_path = tmp_path / "schema.json"
+    schema_path.write_text('{"type": "object",', encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="schema"):
+        load_config(config_path, schema_path)
+
+
+def test_non_object_schema_json_raises_config_error(
+    tmp_path: pathlib.Path,
+    example: dict,
+) -> None:
+    """A schema file holding valid but non-object JSON (a list) raises ConfigError."""
+    config_path = _write_variant(tmp_path, example)
+    schema_path = tmp_path / "schema.json"
+    schema_path.write_text("[]", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="schema"):
+        load_config(config_path, schema_path)
+
+
+def test_permissive_empty_schema_still_fails_clean(tmp_path: pathlib.Path) -> None:
+    """An empty schema validates anything; the loader then fails with ConfigError, not KeyError."""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("nonsense: 1\n", encoding="utf-8")
+    schema_path = tmp_path / "schema.json"
+    schema_path.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="project"):
+        load_config(config_path, schema_path)

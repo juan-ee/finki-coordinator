@@ -121,3 +121,40 @@ def test_checkins_unique_constraint_on_member_and_date(tmp_path: pathlib.Path) -
         conn.execute("INSERT INTO checkins (member_id, date) VALUES (1, '2026-02-01')")
 
     conn.close()
+
+
+# --- phase-gate red-team regressions (I, J, K) -----------------------------------------
+
+
+def test_connect_to_unopenable_path_raises_database_error(tmp_path: pathlib.Path) -> None:
+    """A directory cannot be a SQLite store: DatabaseError, never a raw OperationalError."""
+    with pytest.raises(DatabaseError, match="SQLite"):
+        connect(tmp_path)
+
+
+def test_migrate_readonly_store_raises_database_error(tmp_path: pathlib.Path) -> None:
+    """A read-only store file surfaces as DatabaseError, never a raw OperationalError."""
+    target = tmp_path / "readonly.db"
+    target.write_bytes(b"")
+    target.chmod(0o444)
+    try:
+        with pytest.raises(DatabaseError):
+            conn = connect(target)
+            migrate(conn, applied_at=FIXED_APPLIED_AT)
+    finally:
+        target.chmod(0o644)
+
+
+def test_migrate_conflicting_existing_schema_raises_database_error(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A pre-existing clashing members table makes migrate raise DatabaseError, not raw."""
+    pre = sqlite3.connect(tmp_path / "conflict.db")
+    pre.execute("CREATE TABLE members (id INTEGER)")
+    pre.commit()
+    pre.close()
+
+    conn = connect(tmp_path / "conflict.db")
+
+    with pytest.raises(DatabaseError, match="migration"):
+        migrate(conn, applied_at=FIXED_APPLIED_AT)

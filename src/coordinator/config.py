@@ -16,6 +16,8 @@ from jsonschema.exceptions import ValidationError  # type: ignore[import-untyped
 
 _REQUIRED_KEY_RE = re.compile(r"'(.+)' is a required property")
 _ADDITIONAL_KEY_RE = re.compile(r"\('(.+?)' was unexpected\)")
+# Top-level sections _build_config indexes; a permissive schema must still fail clean here.
+_REQUIRED_SECTIONS = ("project", "telegram", "model", "rag", "log_level")
 
 
 class ConfigError(Exception):
@@ -89,6 +91,11 @@ def _validate_against_schema(data: object, schema: dict[str, object]) -> None:
 
 def _build_config(data: object) -> Config:
     """Map a schema-validated config mapping onto the frozen dataclasses."""
+    if not isinstance(data, dict):
+        raise ConfigError(f"config: expected a mapping of sections; got {type(data).__name__}")
+    missing = [section for section in _REQUIRED_SECTIONS if section not in data]
+    if missing:
+        raise ConfigError(f"config: missing required section {missing[0]!r}")
     data_map = cast(dict[str, object], data)
     project = cast(dict[str, object], data_map["project"])
     telegram = cast(dict[str, object], data_map["telegram"])
@@ -135,12 +142,20 @@ def _read_yaml(path: Path) -> object:
 
 
 def _read_schema(path: Path) -> dict[str, object]:
-    """Read and parse the JSON schema file, raising ConfigError when unreadable."""
+    """Read and parse the JSON schema file, raising ConfigError unless it is a JSON object."""
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise ConfigError(f"{path}: cannot read schema file: {exc}") from exc
-    return cast(dict[str, object], json.loads(text))
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ConfigError(f"{path}: schema file is not valid JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise ConfigError(
+            f"{path}: schema file must contain a JSON object; got {type(parsed).__name__}"
+        )
+    return cast(dict[str, object], parsed)
 
 
 def load_config(config_path: str | Path, schema_path: str | Path | None = None) -> Config:

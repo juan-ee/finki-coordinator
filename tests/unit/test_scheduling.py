@@ -124,3 +124,36 @@ def test_naive_at_utc_raises_scheduling_error() -> None:
     naive = datetime(2026, 1, 15, 12, 0, 0)  # noqa: DTZ001 — naive input is the error case under test
     with pytest.raises(SchedulingError, match="timezone-aware"):
         wake_to_cron_expr("08:00", "Europe/Berlin", naive)
+
+
+# --- phase-gate red-team regressions (F, H) --------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_wake",
+    ["0\uff10:00", "\uff12\uff13:00", "08:\uff10\uff10", "23:5\uff15", "\u0661\u0662:\u0663\u0660"],
+)
+def test_validate_wake_rejects_non_ascii_digits(bad_wake: str) -> None:
+    """Only ASCII digits satisfy strict HH:MM; full-width/Arabic-Indic digits are rejected."""
+    with pytest.raises(SchedulingError):
+        validate_wake(bad_wake)
+
+
+def test_wake_to_cron_expr_rejects_non_ascii_digit_wake() -> None:
+    """wake_to_cron_expr inherits the ASCII-only digit rule through validate_wake."""
+    with pytest.raises(SchedulingError, match="wake"):
+        wake_to_cron_expr("0\uff10:00", "Europe/Berlin", AT_JAN)
+
+
+@pytest.mark.parametrize("bad", [None, 800, b"08:00", 8.0, ["08:00"]])
+def test_validate_wake_rejects_non_string_wake(bad: object) -> None:
+    """A non-str wake raises the module's SchedulingError, never a TypeError."""
+    with pytest.raises(SchedulingError):
+        validate_wake(bad)
+
+
+@pytest.mark.parametrize("bad", [None, 800, b"08:00"])
+def test_wake_to_cron_expr_rejects_non_string_wake(bad: object) -> None:
+    """wake_to_cron_expr raises SchedulingError for a non-str wake before any tz work."""
+    with pytest.raises(SchedulingError):
+        wake_to_cron_expr(bad, "Europe/Berlin", AT_JAN)

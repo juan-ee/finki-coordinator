@@ -26,8 +26,8 @@ from coordinator.repositories import (
 )
 
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
-_DIGITS_RE = re.compile(r"\d+")
-_CHAT_ID_RE = re.compile(r"-?\d+")
+_DIGITS_RE = re.compile(r"[0-9]+")  # ASCII only: Unicode Nd digits must not pass
+_CHAT_ID_RE = re.compile(r"-?[0-9]+")
 
 # Allowed payload keys per tool. member_add deliberately has NO "active" key: members can
 # add themselves, but only member_update changes membership status (self-service rule).
@@ -162,6 +162,36 @@ def _valid_keys() -> str:
     return ", ".join(sorted(DEFAULTS))
 
 
+# SQLite INTEGER bind range: telegram_ids outside it are rejected before any store call.
+_INT64_MIN = -(2**63)
+_INT64_MAX = 2**63 - 1
+
+
+def _telegram_id_error(telegram_id: int) -> str | None:
+    """Return an error when a telegram_id exceeds SQLite's signed 64-bit integer range."""
+    if _INT64_MIN <= telegram_id <= _INT64_MAX:
+        return None
+    return (
+        f"telegram_id {telegram_id} is out of range: must fit a signed 64-bit integer "
+        f"({_INT64_MIN} to {_INT64_MAX})"
+    )
+
+
+def _telegram_id_conflict(
+    members: MembersRepository, telegram_id: int, exclude_id: int | None
+) -> str | None:
+    """Return an error when another member (excluding exclude_id) already holds the telegram_id."""
+    # Pure-core pre-check for the store's UNIQUE(telegram_id) backstop: handlers cannot catch
+    # sqlite3.IntegrityError without importing sqlite3, so they never see the constraint trip.
+    for row in members.list(active=None):
+        if row.id != exclude_id and row.telegram_id == telegram_id:
+            return (
+                f"telegram_id {telegram_id} already registered (member {row.id}, '{row.name}');"
+                " update that member or choose a different id"
+            )
+    return None
+
+
 def member_add(
     payload: dict[str, object],
     members: MembersRepository,
@@ -194,6 +224,13 @@ def member_add(
     tz_error = _timezone_error(timezone_name)
     if tz_error is not None:
         return _fail(tz_error)
+    if telegram_id is not None:
+        tg_error = _telegram_id_error(telegram_id)
+        if tg_error is not None:
+            return _fail(tg_error)
+        tg_conflict = _telegram_id_conflict(members, telegram_id, exclude_id=None)
+        if tg_conflict is not None:
+            return _fail(tg_conflict)
 
     now = clock.now()
     member = members.add(
@@ -251,9 +288,17 @@ def member_update(
         tz_error = _timezone_error(timezone_name)
         if tz_error is not None:
             return _fail(tz_error)
+    if telegram_id is not None:
+        tg_error = _telegram_id_error(telegram_id)
+        if tg_error is not None:
+            return _fail(tg_error)
     member = members.get(member_id)
     if member is None:
         return _fail(f"unknown member {member_id}: use member_list for valid ids")
+    if telegram_id is not None:
+        tg_conflict = _telegram_id_conflict(members, telegram_id, exclude_id=member_id)
+        if tg_conflict is not None:
+            return _fail(tg_conflict)
 
     now = clock.now()
     updated = members.update(

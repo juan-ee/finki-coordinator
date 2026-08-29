@@ -8,7 +8,7 @@ import re
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-_WAKE_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+_WAKE_RE = re.compile(r"^([01][0-9]|2[0-3]):[0-5][0-9]$")  # ASCII digits only
 
 
 class SchedulingError(Exception):
@@ -17,6 +17,10 @@ class SchedulingError(Exception):
 
 def validate_wake(wake: str) -> None:
     """Validate a strict zero-padded 24h wake time ("HH:MM"), raising SchedulingError otherwise."""
+    if not isinstance(wake, str):
+        raise SchedulingError(
+            f"invalid wake time {wake!r}: expected a string in strict zero-padded 24-hour 'HH:MM'"
+        )
     if _WAKE_RE.fullmatch(wake) is None:
         raise SchedulingError(
             f"invalid wake time {wake!r}: expected strict zero-padded 24-hour 'HH:MM' between "

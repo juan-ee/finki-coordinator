@@ -933,3 +933,113 @@ def test_setting_set_accepts_valid_values(key: str, value: str) -> None:
 
     assert result["ok"] is True
     assert settings.get(key) == value
+
+
+# --- phase-gate red-team regressions (A, B, G) ----------------------------------------
+
+
+@pytest.mark.parametrize("huge", [2**63, -(2**63) - 1])
+def test_member_add_rejects_telegram_id_beyond_int64(huge: int) -> None:
+    """A telegram_id outside SQLite's signed 64-bit range fails cleanly, storing nothing."""
+    members, checkins, settings, clock = _wire()
+
+    result = member_add(
+        {"name": "Huge", "timezone": "America/Guayaquil", "wake": "08:00", "telegram_id": huge},
+        members,
+        checkins,
+        settings,
+        clock,
+    )
+
+    assert result["ok"] is False
+    assert "telegram_id" in result["summary"]
+    assert result["cron_relay"] is None
+    assert result["data"] == {}
+    assert len(members.list()) == 0
+
+
+@pytest.mark.parametrize("huge", [2**63, -(2**63) - 1])
+def test_member_update_rejects_telegram_id_beyond_int64(huge: int) -> None:
+    """An int64-overflow telegram_id fails cleanly and leaves the stored row untouched."""
+    members, checkins, settings, clock = _wire()
+    _seed_member(members)
+
+    result = member_update(
+        {"member_id": 1, "telegram_id": huge}, members, checkins, settings, clock
+    )
+
+    assert result["ok"] is False
+    assert "telegram_id" in result["summary"]
+    assert result["cron_relay"] is None
+    member = members.get(1)
+    assert member is not None
+    assert member.telegram_id == 111
+
+
+def test_member_add_rejects_already_registered_telegram_id() -> None:
+    """A telegram_id held by another member fails cleanly instead of a raw IntegrityError."""
+    members, checkins, settings, clock = _wire()
+    _seed_member(members, telegram_id=111)
+
+    result = member_add(
+        {"name": "Bob", "timezone": "America/Guayaquil", "wake": "08:00", "telegram_id": 111},
+        members,
+        checkins,
+        settings,
+        clock,
+    )
+
+    assert result["ok"] is False
+    assert "telegram_id 111 already registered" in result["summary"]
+    assert result["cron_relay"] is None
+    assert result["data"] == {}
+    assert len(members.list()) == 1  # only the seeded row exists
+
+
+def test_member_update_rejects_telegram_id_held_by_another_member() -> None:
+    """Stealing another member's telegram_id fails cleanly; both rows keep their own ids."""
+    members, checkins, settings, clock = _wire()
+    _seed_member(members, telegram_id=111)  # id 1
+    _seed_member(members, name="Bob", telegram_id=222)  # id 2
+
+    result = member_update({"member_id": 2, "telegram_id": 111}, members, checkins, settings, clock)
+
+    assert result["ok"] is False
+    assert "telegram_id 111 already registered" in result["summary"]
+    assert result["cron_relay"] is None
+    alice = members.get(1)
+    bob = members.get(2)
+    assert alice is not None and alice.telegram_id == 111
+    assert bob is not None and bob.telegram_id == 222
+
+
+def test_member_update_accepts_members_own_telegram_id() -> None:
+    """Re-sending the member's stored telegram_id is not a conflict (plain no-op update)."""
+    members, checkins, settings, clock = _wire()
+    _seed_member(members, telegram_id=111)
+
+    result = member_update({"member_id": 1, "telegram_id": 111}, members, checkins, settings, clock)
+
+    assert result["ok"] is True
+    assert result["cron_relay"] is None
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        pytest.param("nudge_limit", "\uff11\uff12", id="nudge-fullwidth"),
+        pytest.param("nudge_limit", "\u0661\u0662", id="nudge-arabic-indic"),
+        pytest.param("digest_chat", "\uff11\uff12", id="chat-fullwidth"),
+        pytest.param("digest_chat", "\u0661\u0662", id="chat-arabic-indic"),
+    ],
+)
+def test_setting_set_rejects_non_ascii_digits(key: str, value: str) -> None:
+    """Numeric settings accept ASCII digits only; Unicode Nd digits fail with nothing stored."""
+    members, checkins, settings, clock = _wire()
+
+    result = setting_set({"key": key, "value": value}, members, checkins, settings, clock)
+
+    assert result["ok"] is False
+    assert key in result["summary"]
+    assert result["cron_relay"] is None
+    assert settings.get(key) == DEFAULTS[key]
