@@ -57,7 +57,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   Tests: `tests/unit/test_db.py` — pragmas after connect; migrate idempotent (double call
   ok); unknown journal mode never silently set.
 
-- [ ] **T0.6 `src/coordinator/repositories.py`** — `MembersRepo`, `CheckinsRepo`,
+- [x] **T0.6 `src/coordinator/repositories.py`** — `MembersRepo`, `CheckinsRepo`,
   `SettingsRepo` (concrete SQLite impls) + `Protocol` interfaces for handlers. Semantics:
   members add/update(active flag)/list(active filter, ordered by name); checkins
   **upsert latest-wins** on (member_id, date); settings `get` falls back to module-level
@@ -287,3 +287,17 @@ Pi/human; the agent only produces/refreshes the verification script.
   (4) test fixture duplication (connect+try/finally repeated); (5) row_factory=Row and
   DatabaseError are unrequested but sanctioned API decisions (row_factory was explicitly
   offered as decide-and-note in the seam).
+- 2026-08-29 T0.6 — review verdict: no hard violations (both axes; semantics verified in
+  SQL, Protocol signatures byte-identical to concretes). Judgement calls: (1) ORDER BY
+  name uses SQLite BINARY collation — case-sensitive ("alice" after "Zed"); spec doesn't
+  mandate collation, tests use uniform capitalization (latent trap); (2) update() None =
+  leave-unchanged, so nullable columns cannot be reset to NULL — T0.8 must decide
+  explicit-null/sentinel if clearing wake/role is ever needed; (3) Protocol⇄concrete
+  docstring/signature echo is PEP-544-required but unpinned — conformance test candidate;
+  schema defaults live in 3 places (schema.sql/Protocol/concrete); (4) update's 7 guard
+  blocks are explicit by design (loop would collapse them); (5) `next` param shadows the
+  builtin — required by the proposal's column name; (6) active:int not range-checked in
+  this layer (update(active=7) stores silently) — validation belongs to handlers (T0.8);
+  (7) minor test duplication + assert-narrowings vanish under -O.
+- 2026-08-29 T0.6 sanctioned addition — CheckinsRepo.by_date(date) ordered by member_id:
+  minimal read required by the task's CRUD round-trip tests and T0.8/T1.3 digest flow.
