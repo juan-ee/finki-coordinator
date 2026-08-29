@@ -435,6 +435,41 @@ def test_member_update_deactivate_with_wake_change_pause_wins() -> None:
     assert member.wake == "09:00"
 
 
+def test_member_update_deactivate_already_inactive_no_relay() -> None:
+    """Re-sending active=0 to an already-inactive member is a no-op: ok, but no relay."""
+    members, checkins, settings, clock = _wire()
+    _seed_member(members)
+    members.update(1, updated_at=SEED_CREATED_AT, active=0)
+
+    result = member_update({"member_id": 1, "active": 0}, members, checkins, settings, clock)
+
+    assert result["ok"] is True
+    assert result["cron_relay"] is None
+    assert "already inactive" in result["summary"]
+    member = members.get(1)
+    assert member is not None
+    assert member.active == 0
+
+
+def test_member_update_deactivate_already_inactive_with_wake_no_relay() -> None:
+    """Wake + active=0 on an already-inactive member relays nothing; the row keeps the wake."""
+    members, checkins, settings, clock = _wire()
+    _seed_member(members)
+    members.update(1, updated_at=SEED_CREATED_AT, active=0)
+
+    result = member_update(
+        {"member_id": 1, "wake": "09:00", "active": 0}, members, checkins, settings, clock
+    )
+
+    assert result["ok"] is True
+    assert result["cron_relay"] is None
+    assert "already inactive" in result["summary"]
+    member = members.get(1)
+    assert member is not None
+    assert member.active == 0
+    assert member.wake == "09:00"
+
+
 def test_member_update_timezone_change_recomputes_schedule() -> None:
     """The schedule depends on the timezone, so a tz-only change rebuilds the cron relay."""
     members, checkins, settings, clock = _wire()

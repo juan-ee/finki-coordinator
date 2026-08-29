@@ -219,7 +219,7 @@ def member_update(
     settings: SettingsRepository,
     clock: Clock,
 ) -> dict[str, object]:
-    """Update a member row; wake/timezone changes re-schedule, active=0 pauses the job."""
+    """Update a member row; wake/timezone changes re-schedule, a real deactivation pauses."""
     error = (
         _reject_unknown(payload, _UPDATE_FIELDS)
         or _require_int(payload, "member_id")
@@ -269,16 +269,24 @@ def member_update(
     # members.get() above just confirmed the id, so update() cannot return None here.
     assert updated is not None
 
-    # Relay precedence (documented decision): (1) active=0 pause WINS over any wake or
-    # timezone edit — a paused job must not also be rescheduled, though the row keeps the
-    # new values. (2) Otherwise an actual wake or timezone CHANGE versus the stored row
-    # rebuilds the schedule through scheduling.py only (rule 4); a member whose stored
-    # wake is None has no job to re-schedule. (3) active=1 alone relays nothing (T0.8
-    # spec: reactivation carries no relay — un-pausing a paused job is a noted gap).
+    # Relay precedence (documented decision): (1) a real deactivation (payload active=0
+    # on a stored-active row) WINS over any wake or timezone edit — the job is paused,
+    # not rescheduled, though the row keeps the new values. (2) active=0 on a row that
+    # is ALREADY inactive is a no-op: no deactivation occurred and no schedule changed,
+    # so cron_relay is None; other payload fields (e.g. wake) are still persisted on the
+    # row but relay nothing either. (3) Otherwise an actual wake or timezone CHANGE
+    # versus the stored row rebuilds the schedule through scheduling.py only (rule 4); a
+    # member whose stored wake is None has no job to re-schedule. (4) active=1 alone
+    # relays nothing (T0.8 spec: reactivation carries no relay — un-pausing a paused job
+    # is a noted gap).
     cron_relay: dict[str, object] | None = None
-    if active == 0:
+    if active == 0 and member.active == 1:
         cron_relay = _cron_relay({"action": "pause", "name": f"checkin-{member_id}"})
         summary = f"{updated.name} deactivated; check-in job checkin-{member_id} paused"
+    elif active == 0:
+        summary = (
+            f"{updated.name} is already inactive; check-in job checkin-{member_id} remains paused"
+        )
     else:
         new_wake = wake if wake is not None else member.wake
         new_tz = timezone_name if timezone_name is not None else member.timezone
