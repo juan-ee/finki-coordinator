@@ -1,0 +1,59 @@
+# docker-compose.yml — Hermes coordinator template.
+#
+# Builds NousResearch/hermes-agent from source at the commit pinned in
+# docker/HERMES_REF. The pinned ref MUST stay literally in the build URL below —
+# tests/test_compose.py fails if the pin file and this file drift apart. Update
+# BOTH together, then rebuild (procedure: docker/README.md).
+#
+# Secrets are never written here: every credential is a bare list-form
+# environment entry passed through from the runtime environment (fill .env from
+# .env.example; never commit it). docker compose config exits 0 with no .env
+# present — unset entries render as null, no values.
+
+services:
+  gateway:
+    # Git-URL build context at the pinned ref (docker/HERMES_REF — keep in sync).
+    build: https://github.com/NousResearch/hermes-agent.git#5fc308a70719a83cccdbba4c0e39c23f5a8239d5
+    image: hermes-agent
+    container_name: hermes
+    restart: unless-stopped
+    # Host networking per upstream compose (proposal §5): the gateway long-polls
+    # Telegram, so no inbound ports are needed or published.
+    network_mode: host
+    volumes:
+      # Hermes home (config.yaml, SOUL.md, profiles, sessions, cron state).
+      # setup.sh writes the host side at ${HERMES_HOME:-$HOME/.hermes}; inside the
+      # container the upstream image sets HERMES_HOME=/opt/data.
+      - ~/.hermes:/opt/data
+      # Coordinator plugin, mounted read-only into the user-plugin directory
+      # (upstream: user plugins live under <HERMES_HOME>/plugins/).
+      - ./src/coordinator:/opt/data/plugins/coordinator:ro
+      # Our runtime state: data/hermes/hermes-coord.db (plugin DB) and
+      # data/project/ (the rclone-bisynced project mirror). Gitignored — never
+      # commit; compose config stays valid while data/ does not exist yet.
+      - ./data:/opt/data/workspace
+    environment:
+      # Timezone law (AGENTS.md #4): the whole container is anchored to UTC —
+      # Hermes computes every cron schedule in this single zone; per-member
+      # conversions happen inside the coordinator plugin, never per-job.
+      - TZ=UTC
+      # s6 drops privileges to this uid/gid so files it creates in the bind
+      # mounts stay owned by the host user. Upstream defaults to 10000 — on the
+      # Pi set HERMES_UID / HERMES_GID in .env to your own `id -u` / `id -g`.
+      - HERMES_UID=${HERMES_UID:-10000}
+      - HERMES_GID=${HERMES_GID:-10000}
+      # Secrets & credentials — bare list form: values flow from the runtime
+      # environment (sourced .env), never rendered into this file or its config.
+      - TELEGRAM_BOT_TOKEN
+      - TELEGRAM_ALLOWED_USERS
+      - TELEGRAM_GROUP_ALLOWED_CHATS
+      - TELEGRAM_GROUP_ALLOWED_USERS
+      - OPENROUTER_API_KEY
+      - GOOGLE_DRIVE_CLIENT_ID
+      - GOOGLE_DRIVE_CLIENT_SECRET
+      - GOOGLE_DRIVE_REFRESH_TOKEN
+      - GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON
+      - RCLONE_REMOTE
+      - RCLONE_ROOT_FOLDER_ID
+    # Gateway command per upstream compose.
+    command: ["gateway", "run"]
