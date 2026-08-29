@@ -102,7 +102,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   idempotently. Tests: `tests/unit/test_init_db.py` — fresh seed inserts N members;
   second run = no duplicates; run without seed = empty members table.
 
-- [ ] **T0.11 `DOC` — config artifacts finalized** — `config/members.seed.yaml`
+- [x] **T0.11 `DOC` — config artifacts finalized** — `config/members.seed.yaml`
   (4 members: 3× `America/Guayaquil`, 1× `Europe/Berlin`, wakes 08:00/08:30/09:00/08:30),
   `config/config.example.yaml`, `.env.example` (exact content per `proposal.md` §2 incl.
   `TELEGRAM_ALLOWED_USERS` + group-scoped vars + OpenRouter-limit comment).
