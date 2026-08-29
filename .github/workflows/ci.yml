@@ -1,0 +1,21 @@
+# CI: lint + type-check + test via uv; commands are exactly the Makefile targets (AGENTS.md).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+      - name: Install locked dependencies
+        run: uv sync --frozen
+      - name: Lint, type-check, test (Makefile targets)
+        run: uv run make lint && uv run make type && uv run make test
+      - name: Validate example config against schema
+        run: uv run python -m coordinator.config validate config/config.example.yaml config/config.schema.json
