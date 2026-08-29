@@ -43,7 +43,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   missing `model.default_model`, `rag.chunk_size` as string, unknown top-level key,
   `timezone: "Not/AZone"`, negative chunk_size.
 
-- [ ] **T0.4 `src/coordinator/config.py`** — `load_config(path) -> Config` (frozen
+- [x] **T0.4 `src/coordinator/config.py`** — `load_config(path) -> Config` (frozen
   dataclasses mirroring the schema), validation via jsonschema + `zoneinfo.ZoneInfo`
   probe of `project.timezone`; typed exception `ConfigError` with schema-path in message.
   Tests: `tests/unit/test_config_loader.py` — happy path values land in dataclasses;
@@ -263,3 +263,15 @@ Pi/human; the agent only produces/refreshes the verification script.
   schema JSON lines exceed 100 cols (ruff doesn't lint JSON).
 - 2026-08-29 housekeeping — .DS_Store added to .gitignore (macOS artifact appeared
   untracked; prevent accidental commit).
+- 2026-08-29 T0.4 — review verdict: no hard violations; one hard-leaning item arbitrated
+  as judgement: CLI main() lives in config.py (rule 3 pure/impure) — kept-and-documented
+  because T0.2's committed CI seam pins `python -m coordinator.config validate` and the
+  AGENTS.md repo map assigns config loading to config.py; moving it would break ci.yml.
+  Other judgement calls: (1) subparser machinery for one command + optional schema_path
+  param with sibling-discovery default — mild YAGNI creep, test-justified; (2)
+  iter_errors loop always raises on first error — next(iter()) would state intent;
+  (3) two happy-path tests read committed example yaml instead of tmp_path (read-only,
+  deterministic, precedent tolerated); (4) minor test duplication/indirection
+  (inlined mutant, dict keyed by callables); (5) # type: ignore[import-untyped] on
+  jsonschema/PyYAML imports (no py.typed, stubs out of scope) — future chore candidate:
+  add types-PyYAML/types-jsonschema to dev deps and drop the ignores.
