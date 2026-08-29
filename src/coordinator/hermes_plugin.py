@@ -1,0 +1,227 @@
+"""Thin Hermes adapter: TOOL_SPECS + register/dispatch — the only Hermes-aware module.
+
+No business logic lives here (AGENTS.md rule 3): the adapter maps tool names -> JSON
+schemas -> the handlers.py functions and passes result dicts through untouched; concrete
+wiring (repos, clock) happens in register() and only there. Hermes itself is NOT a
+dependency and is never imported: the host context arrives injected via the HermesContext
+Protocol, so nothing at module import time can fail when Hermes is absent — the structural
+form of the guarded import. If Hermes symbols are ever needed here, import them lazily
+inside a function under try/except ImportError, never at module top level.
+"""
+
+from collections.abc import Callable
+from typing import Final, Protocol, TypedDict
+
+from coordinator.handlers import (
+    Clock,
+    checkin_submit,
+    checkins_by_date,
+    member_add,
+    member_list,
+    member_update,
+    setting_get,
+    setting_set,
+)
+from coordinator.repositories import (
+    CheckinsRepository,
+    MembersRepository,
+    SettingsRepository,
+)
+
+HandlerFn = Callable[
+    [dict[str, object], MembersRepository, CheckinsRepository, SettingsRepository, Clock],
+    dict[str, object],
+]
+"""The uniform handler signature (payload + wired deps -> result dict) every tool targets."""
+
+
+class ToolSpec(TypedDict):
+    """One TOOL_SPECS entry: host-facing description, payload schema, handler, toolset."""
+
+    description: str
+    schema: dict[str, object]
+    handler: HandlerFn
+    toolset: str
+
+
+class HermesContext(Protocol):
+    """Minimal host seam register() needs from Hermes (recorded by FakeCtx in tests)."""
+
+    def register_tool(
+        self,
+        *,
+        name: str,
+        description: str,
+        schema: dict[str, object],
+        handler: Callable[[dict[str, object]], dict[str, object]],
+        toolset: str,
+    ) -> None:
+        """Record one tool registration with the host."""
+        ...
+
+
+TOOL_SPECS: Final[dict[str, ToolSpec]] = {
+    "member_add": {
+        "description": (
+            "Add an active member (name, timezone, wake); returns the create relay for its"
+            " check-in cron job."
+        ),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "timezone": {"type": "string"},
+                "wake": {"type": "string"},
+                "telegram_id": {"type": "integer"},
+                "role": {"type": "string"},
+            },
+            "required": ["name", "timezone", "wake"],
+            "additionalProperties": False,
+        },
+        "handler": member_add,
+        "toolset": "coordinator",
+    },
+    "member_update": {
+        "description": (
+            "Update a member row (wake, active, timezone, role, name, telegram_id);"
+            " schedule changes relay an edit or pause."
+        ),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "member_id": {"type": "integer"},
+                "wake": {"type": "string"},
+                "active": {"type": "integer"},
+                "timezone": {"type": "string"},
+                "role": {"type": "string"},
+                "name": {"type": "string"},
+                "telegram_id": {"type": "integer"},
+            },
+            "required": ["member_id"],
+            "additionalProperties": False,
+        },
+        "handler": member_update,
+        "toolset": "coordinator",
+    },
+    "member_list": {
+        "description": "List members (default: the active roster); rows omit telegram_id.",
+        "schema": {
+            "type": "object",
+            "properties": {"active": {"type": "integer"}},
+            "required": [],
+            "additionalProperties": False,
+        },
+        "handler": member_list,
+        "toolset": "coordinator",
+    },
+    "checkin_submit": {
+        "description": "Record one member's check-in for an ISO date (latest submission wins).",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "member_id": {"type": "integer"},
+                "date": {"type": "string"},
+                "done": {"type": "string"},
+                "next": {"type": "string"},
+                "blockers": {"type": "string"},
+                "source": {"type": "string"},
+            },
+            "required": ["member_id", "date"],
+            "additionalProperties": False,
+        },
+        "handler": checkin_submit,
+        "toolset": "coordinator",
+    },
+    "checkins_by_date": {
+        "description": "List the check-ins recorded on an ISO date, ordered by member id.",
+        "schema": {
+            "type": "object",
+            "properties": {"date": {"type": "string"}},
+            "required": ["date"],
+            "additionalProperties": False,
+        },
+        "handler": checkins_by_date,
+        "toolset": "coordinator",
+    },
+    "setting_get": {
+        "description": (
+            "Read one setting (digest_time, digest_chat, nudge_limit); unset keys fall back"
+            " to defaults."
+        ),
+        "schema": {
+            "type": "object",
+            "properties": {"key": {"type": "string"}},
+            "required": ["key"],
+            "additionalProperties": False,
+        },
+        "handler": setting_get,
+        "toolset": "coordinator",
+    },
+    "setting_set": {
+        "description": "Persist one setting after per-key validation.",
+        "schema": {
+            "type": "object",
+            "properties": {"key": {"type": "string"}, "value": {"type": "string"}},
+            "required": ["key", "value"],
+            "additionalProperties": False,
+        },
+        "handler": setting_set,
+        "toolset": "coordinator",
+    },
+}
+
+
+def dispatch(
+    name: str,
+    payload: dict[str, object],
+    *,
+    members: MembersRepository,
+    checkins: CheckinsRepository,
+    settings: SettingsRepository,
+    clock: Clock,
+) -> dict[str, object]:
+    """Route one payload to its handler; return the handler's result dict untouched."""
+    spec = TOOL_SPECS.get(name)
+    if spec is None:
+        raise KeyError(f"unknown tool {name!r}: known tools are {', '.join(sorted(TOOL_SPECS))}")
+    return spec["handler"](payload, members, checkins, settings, clock)
+
+
+def _bind(
+    name: str,
+    members: MembersRepository,
+    checkins: CheckinsRepository,
+    settings: SettingsRepository,
+    clock: Clock,
+) -> Callable[[dict[str, object]], dict[str, object]]:
+    """Return the host-facing callable dispatching a payload to this tool's handler."""
+
+    def tool(payload: dict[str, object]) -> dict[str, object]:
+        """Dispatch one payload with the deps wired at registration time."""
+        return dispatch(
+            name, payload, members=members, checkins=checkins, settings=settings, clock=clock
+        )
+
+    return tool
+
+
+def register(
+    ctx: HermesContext,
+    *,
+    members: MembersRepository,
+    checkins: CheckinsRepository,
+    settings: SettingsRepository,
+    clock: Clock,
+) -> list[str]:
+    """Register every TOOL_SPECS tool with the host ctx; return the names in spec order."""
+    registered: list[str] = []
+    for name, spec in TOOL_SPECS.items():
+        ctx.register_tool(
+            name=name,
+            description=spec["description"],
+            schema=spec["schema"],
+            handler=_bind(name, members, checkins, settings, clock),
+            toolset=spec["toolset"],
+        )
+        registered.append(name)
+    return registered
