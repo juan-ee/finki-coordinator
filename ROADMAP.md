@@ -393,3 +393,22 @@ Pi/human; the agent only produces/refreshes the verification script.
   list[str] of names (spec silent; no consumer yet); (3) the 4-dep kwargs clump repeats
   across dispatch tests (helper absorbs partially); (4) "hermes" not in sys.modules
   assertion is suite-order dependent if a real hermes package ever enters the venv.
+- 2026-08-29 Phase-gate red team (before T1.6, per AGENTS.md review protocol §4) —
+  charter: break the core with NEW failing tests. Result: 12 real bugs / 54 attack cases;
+  scheduling DST math held completely (explicit could-not-fail: Berlin ±1s flips, Lord
+  Howe half-hour DST, Kathmandu +05:45, Kiritimati +14 wraparound, year-2500, spring-gap
+  wakes immune by construction). Hard findings fixed in fix(phase1) commit 7808a35:
+  duplicate/oversized telegram_id now ok:False (was raw IntegrityError/OverflowError),
+  malformed/non-object/permissive-empty schema files now ConfigError (was
+  JSONDecodeError/AttributeError/KeyError), validate_wake ASCII-only digits + non-str
+  guard, setting_set digit/chat-id ASCII-only, db.DatabaseError now actually raised
+  (connect/migrate wrap sqlite3.Error; class rebased Exception->sqlite3.Error to keep
+  script contracts). 37 held-behavior keeper tests adopted (test_redteam_keepers.py);
+  31 regression tests added; suite 156 -> 224. Delta re-review: FIXED, no regressions.
+  Judgement calls recorded: (1) N1 low residual — permissive {} schema + non-mapping
+  section (project: 5) still raises raw TypeError; unreachable with the shipped schema;
+  (2) duplicate YAML keys silently last-win (PyYAML default) — strict loader is a
+  possible future hardening; (3) wake-edit on an INACTIVE member emits an edit relay for
+  the paused job (row stays inactive) — documented relay-precedence behavior; (4)
+  DatabaseError rebasing to sqlite3.Error subclass keeps init_db/generate_agents_md
+  except-clauses working.
