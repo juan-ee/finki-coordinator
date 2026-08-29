@@ -125,7 +125,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   without writing. Tests: `tests/test_setup_smoke.py` — `bash -n` passes; `--dry-run`
   with fixture env exits 0 and writes nothing (snapshot tmp dir).
 
-- [ ] **T0.14 `docker-compose.yml` + `docker/`** — template compose: build hermes-agent
+- [x] **T0.14 `docker-compose.yml` + `docker/`** — template compose: build hermes-agent
   from upstream repo at ref pinned in `docker/HERMES_REF` (build arg), mount
   `./src/coordinator` into the container's plugin directory, mount `./data` for our DB +
   project mirror, `TZ=UTC`, `HERMES_UID/GID` passthrough, gateway command per upstream
@@ -326,6 +326,20 @@ Pi/human; the agent only produces/refreshes the verification script.
   (7) _timezone_error duplicates scheduling's except-tuple — shared validate_timezone
   helper is a refactor candidate; (8) _missing_required call in member_add is dead weight
   (deletable); (9) "remains paused" summary nit when the member never had a job.
+- 2026-08-29 T0.14 — review verdict: no hard violations (spec axis verified upstream
+  fidelity live: gateway command byte-identical to upstream compose at pin 5fc308a7,
+  mounts match README exactly, HERMES_REF matches build URL byte-for-byte, secrets render
+  null with no .env present). Judgement calls: (1) ~/.hermes:/opt/data volume added
+  beyond the two named mounts — upstream's own gateway does exactly this; container would
+  be stateless without it; (2) build implemented as git-URL #ref fragment instead of
+  build arg — upstream Dockerfile takes no ref ARG (documented in docker/README.md);
+  (3) ./data mounts at /opt/data/workspace (cannot overlay the HERMES_HOME volume);
+  (4) plugin mount read-only; (5) PASSTHROUGH_VARS list in the test re-lists compose's
+  env block without a set-equality drift guard — new env var could leak into rendered
+  config undetected (add set-equality test later); (6) the pin SHA lives in 3 places
+  (HERMES_REF, build URL, README copy) with the README copy hand-updated — drift risk;
+  (7) docker-in-tests is spec-sanctioned with clean skip; (8) working_dir for AGENTS.md
+  injection deliberately deferred to a later phase.
 - 2026-08-29 T0.13 — review verdict: no hard violations (spec axis probed all seven
   steps incl. 0600 perms on rclone.conf and zero writes under dry-run). Judgement calls:
   (1) bare `python` for the config-validate delegation (spec-literal) vs the repo's
