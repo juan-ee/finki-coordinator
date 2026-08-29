@@ -143,7 +143,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   (drafts → `inbox/`, never write `docs/` directly), members manage only their own row,
   roster admin owner-only. Acceptance: self-review checklist at file bottom all ✅.
 
-- [ ] **T1.2 `DOC` — `prompts/skills/check-in/SKILL.md`** — check-in flow: greet →
+- [x] **T1.2 `DOC` — `prompts/skills/check-in/SKILL.md`** — check-in flow: greet →
   ask done/next/blockers → `checkin_submit` → confirm + surface relevant teammates'
   blockers. One worked example dialogue embedded.
 
