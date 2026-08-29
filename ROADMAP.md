@@ -50,7 +50,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   missing file → ConfigError; each invalid variant from T0.3 raises ConfigError naming
   the JSON path; valid tz key passes probe.
 
-- [ ] **T0.5 `src/coordinator/schema.sql` + `db.py`** — DDL exactly per `proposal.md` §1
+- [x] **T0.5 `src/coordinator/schema.sql` + `db.py`** — DDL exactly per `proposal.md` §1
   (`members`, `checkins` with `UNIQUE(member_id, date)`, `settings`). `db.py`:
   `connect(path)` sets `journal_mode=WAL` + `busy_timeout=5000` + `foreign_keys=ON`;
   `migrate(conn)` applies versioned migrations from a `schema_migrations` table.
@@ -275,3 +275,15 @@ Pi/human; the agent only produces/refreshes the verification script.
   (inlined mutant, dict keyed by callables); (5) # type: ignore[import-untyped] on
   jsonschema/PyYAML imports (no py.typed, stubs out of scope) — future chore candidate:
   add types-PyYAML/types-jsonschema to dev deps and drop the ignores.
+- 2026-08-29 T0.5 — review verdict: no hard violations (both axes; DDL byte-identical to
+  proposal §1, migration atomicity empirically verified, no false WAL pass). Arbitrated:
+  migrate(conn, applied_at: str) deviates from the sketched migrate(conn) — required
+  caller-supplied timestamp is the strictest rule-5-compliant time injection; specced
+  single-arg call intentionally raises; docstring should state caller owns the timestamp.
+  Judgement calls: (1) migrate() silently commits any caller-open transaction
+  (executescript implicit-COMMIT hazard; safe in startup-only wiring — docstring should
+  disclose); (2) unreachable None branch on journal_mode pragma row (candidate for
+  deletion); (3) schema.sql read at module import (fails at import, not first use);
+  (4) test fixture duplication (connect+try/finally repeated); (5) row_factory=Row and
+  DatabaseError are unrequested but sanctioned API decisions (row_factory was explicitly
+  offered as decide-and-note in the seam).
