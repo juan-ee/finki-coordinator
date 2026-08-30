@@ -393,6 +393,10 @@ Pi/human; the agent only produces/refreshes the verification script.
   list[str] of names (spec silent; no consumer yet); (3) the 4-dep kwargs clump repeats
   across dispatch tests (helper absorbs partially); (4) "hermes" not in sys.modules
   assertion is suite-order dependent if a real hermes package ever enters the venv.
+- 2026-08-29 housekeeping (user-directed, between T1.6 and the gate run) — repo renamed
+  hermes-setup → finki-coordinator (gh rename; old URL redirects); README.md expanded from
+  the T0.1 stub to full quickstart/architecture/status. Content kept to shipped phases
+  only (no promises beyond ROADMAP); Pi clone remote updated; no production code touched.
 - 2026-08-29 Phase-gate red team (before T1.6, per AGENTS.md review protocol §4) —
   charter: break the core with NEW failing tests. Result: 12 real bugs / 54 attack cases;
   scheduling DST math held completely (explicit could-not-fail: Berlin ±1s flips, Lord
