@@ -181,9 +181,9 @@ NEXT_EOF
 
 main() {
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "hermes-setup: DRY RUN - printing actions, writing nothing"
+    echo "finki-coordinator: DRY RUN - printing actions, writing nothing"
   else
-    echo "hermes-setup: applying configuration"
+    echo "finki-coordinator: applying configuration"
   fi
   step_env_check
   step_validate_config

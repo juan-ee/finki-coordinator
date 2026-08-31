@@ -8,29 +8,32 @@
 ## Preconditions (all must hold before starting)
 
 - [ ] Pi 5 (8 GB, 64-bit OS on SSD), Docker + Compose installed (`docker --version`,
-      `docker compose version`).
-- [ ] Repo cloned on the Pi at the intended commit: `git log --oneline -1` matches the
-      release commit you mean to ship.
+      `docker compose version`) — *(deviation: OS on SD card, no SSD attached — see
+      Sign-off; Docker 29.7.2 + Compose v5.5.0 present)*.
+- [x] Repo cloned on the Pi at the intended commit: `git log --oneline -1` matches the
+      release commit you mean to ship. *(66be366 — finki-coordinator rename + README)*
 - [ ] `.env` filled (from `.env.example`): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USERS`
       (contains YOUR user id), `OPENROUTER_API_KEY` ($20 monthly credit limit set in the
       OpenRouter console), Google Drive OAuth trio, `RCLONE_REMOTE`, optional
-      `RCLONE_ROOT_FOLDER_ID`.
-- [ ] `config/config.yaml` filled (from `config/config.example.yaml`).
+      `RCLONE_ROOT_FOLDER_ID`. *(staged on the Pi; secrets pending)*
+- [x] `config/config.yaml` filled (from `config/config.example.yaml`). *(hermes-demo /
+      HermesDemo / America/Guayaquil — validates against the schema)*
 - [ ] `./scripts/setup.sh` ran **on the Pi** in real mode (not `--dry-run`) and exited 0:
       it validated the config, wrote `rclone.conf`, installed SOUL.md, and printed the
-      Hermes config fallback if the CLI was absent.
+      Hermes config fallback if the CLI was absent. *(dry-run passed; real run pending .env)*
 - [ ] `./scripts/init_db.py --db data/hermes/hermes-coord.db --seed config/members.seed.yaml`
       ran once and exited 0 (re-run prints the `seeded_at` skip note and exits 0).
 
 ## 1. ARM64 build succeeds
 
 ```
-cd ~/hermes-setup && time docker compose build
+cd ~/finki-coordinator && time docker compose build
 ```
 
-- [ ] Build completes without error. **Record duration:** __________ (expect 20–60 min
-      on the Pi; compiled Python/Node deps; one-time — subsequent runs are cached).
-- [ ] `docker images | grep hermes-agent` shows the built image.
+- [x] Build completes without error. **Record duration:** 11 min 36 s (696 s — well
+      under the 20–60 min expectation; one-time, layers cached now)
+- [x] `docker images | grep hermes-agent` shows the built image. *(hermes-agent:latest,
+      4.08 GB)*
 
 ## 2. Container boots and the gateway comes online
 
