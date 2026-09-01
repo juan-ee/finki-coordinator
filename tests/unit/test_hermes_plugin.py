@@ -7,6 +7,7 @@ payload validation handlers.py enforces (T0.8), so schema drift fails here.
 """
 
 import importlib
+import json
 import sys
 from datetime import UTC, datetime
 
@@ -357,7 +358,13 @@ def test_registered_callable_dispatches_with_the_wired_deps() -> None:
     register_tools(ctx, members=members, checkins=checkins, settings=settings, clock=clock)
 
     call = next(c for c in ctx.calls if c["name"] == "member_add")
-    result = call["handler"]({"name": "Bob", "timezone": "Europe/Berlin", "wake": "08:00"})
+    raw = call["handler"](
+        {"name": "Bob", "timezone": "Europe/Berlin", "wake": "08:00"},
+        task_id="t-1",  # host-injected dispatch kwargs must be tolerated
+        session_id="s-1",
+        user_task=None,
+    )
+    result = json.loads(raw)
 
     assert isinstance(result, dict)
     assert result["ok"] is True

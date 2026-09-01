@@ -19,6 +19,7 @@ __init__, single positional ctx): it uses wire_runtime() to build the SQLite-bac
 repo stack + SystemClock at the runtime layout, then delegates to register_tools().
 """
 
+import json
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -70,7 +71,7 @@ class HermesContext(Protocol):
         name: str,
         description: str,
         schema: dict[str, object],
-        handler: Callable[[dict[str, object]], dict[str, object]],
+        handler: Callable[..., str],
         toolset: str,
     ) -> None:
         """Record one tool registration with the host."""
@@ -210,14 +211,22 @@ def _bind(
     checkins: CheckinsRepository,
     settings: SettingsRepository,
     clock: Clock,
-) -> Callable[[dict[str, object]], dict[str, object]]:
-    """Return the host-facing callable dispatching a payload to this tool's handler."""
+) -> Callable[..., str]:
+    """Return the host-facing callable dispatching a payload to this tool's handler.
 
-    def tool(payload: dict[str, object]) -> dict[str, object]:
-        """Dispatch one payload with the deps wired at registration time."""
-        return dispatch(
+    Upstream calls entry.handler(args, **dispatch_kwargs) — currently task_id/session_id/
+    user_task (model_tools.handle_function_call) — and accepts str (or multimodal) results
+    only (registry._normalize_handler_result), so the closure tolerates **_host kwargs
+    (ignored: handlers are stateless in the host context; the payload carries the tool
+    args) and serializes the AGENTS.md result dict to JSON at the host boundary.
+    """
+
+    def tool(payload: dict[str, object], **_host: object) -> str:
+        """Dispatch one payload with the deps wired at registration time; return JSON."""
+        result = dispatch(
             name, payload, members=members, checkins=checkins, settings=settings, clock=clock
         )
+        return json.dumps(result, default=str)
 
     return tool
 

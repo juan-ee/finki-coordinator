@@ -13,6 +13,7 @@ match TOOL_SPECS exactly, so hermes plugins list can never disagree with the reg
 """
 
 import inspect
+import json
 from pathlib import Path
 
 import jsonschema
@@ -136,10 +137,51 @@ def test_register_wires_runtime_store_and_registers_seven_tools(
         "runtime store must live at <HERMES_HOME>/workspace/hermes/hermes-coord.db"
     )
     add = next(call["handler"] for call in ctx.calls if call["name"] == "member_add")
-    added = add({"name": "Ana", "timezone": "America/Guayaquil", "wake": "08:00"})
+    added = json.loads(str(add({"name": "Ana", "timezone": "America/Guayaquil", "wake": "08:00"})))
     assert added["ok"] is True, added["summary"]
     listed = next(call["handler"] for call in ctx.calls if call["name"] == "member_list")
-    roster = listed({})
+    roster = json.loads(str(listed({})))
     assert roster["ok"] is True
     members = roster["data"]["members"]
     assert [member["name"] for member in members] == ["Ana"]
+
+
+def test_bound_tool_accepts_host_injected_dispatch_kwargs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Upstream invokes handlers as handler(args, task_id=..., session_id=..., user_task=...).
+
+    model_tools.handle_function_call -> registry.dispatch(name, args, task_id=...,
+    session_id=..., user_task=...) -> entry.handler(args, **kwargs); a bound tool that
+    accepts only (payload) raises TypeError and the tool call dies (2026-09-01 gate).
+    """
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    ctx = FakeCtx()
+    coordinator.register(ctx)
+    member_list = next(call["handler"] for call in ctx.calls if call["name"] == "member_list")
+
+    result = member_list({}, task_id="", session_id="sess-1", user_task=None)
+
+    payload = json.loads(str(result))
+    assert payload["ok"] is True
+
+
+def test_bound_tool_returns_json_string_per_upstream_result_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """registry._normalize_handler_result accepts str (or the multimodal envelope) only.
+
+    A dict result is rejected as tool_result_contract, so the adapter serializes the
+    AGENTS.md result dict to JSON at the host boundary while handlers stay dict-based.
+    """
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    ctx = FakeCtx()
+    coordinator.register(ctx)
+    setting_get = next(call["handler"] for call in ctx.calls if call["name"] == "setting_get")
+
+    raw = setting_get({"key": "digest_time"}, task_id=None, session_id="", user_task=None)
+
+    assert isinstance(raw, str), "upstream only accepts str tool results"
+    payload = json.loads(raw)
+    assert payload["ok"] is True
+    assert payload["data"]["value"] == "18:00"  # DEFAULTS fallback for digest_time
