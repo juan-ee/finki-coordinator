@@ -99,14 +99,14 @@ def test_seed_lands_four_members_and_marker(day: Day) -> None:
 
     roster = {member.name: member for member in members.list(active=1)}
 
-    assert set(roster) == {"Ana", "Bruno", "Caro", "Dora"}
+    assert set(roster) == {"Juan", "Jose", "Luis", "David"}
     assert [
-        (roster[name].timezone, roster[name].wake) for name in ("Ana", "Bruno", "Caro", "Dora")
+        (roster[name].timezone, roster[name].wake) for name in ("Juan", "Jose", "Luis", "David")
     ] == [
-        ("America/Guayaquil", "08:00"),
-        ("America/Guayaquil", "08:30"),
-        ("America/Guayaquil", "09:00"),
-        ("Europe/Berlin", "08:30"),
+        ("Europe/Berlin", "06:30"),
+        ("America/Guayaquil", "06:00"),
+        ("America/Guayaquil", "05:30"),
+        ("America/Guayaquil", "11:00"),
     ]
     assert settings.get("seeded_at")  # marker exists and is a non-empty stamp
 
@@ -116,10 +116,10 @@ def test_checkins_upsert_to_four_rows_and_by_date(day: Day) -> None:
     members, checkins, settings, clock = day
     ids = _member_ids(day)
     first_pass = {
-        "Ana": ("wrote the ADR draft", "circulate for review", "waiting on Pi"),
-        "Bruno": ("fixed the WAL flake", "add regression test", "none"),
-        "Caro": ("sketched digest UI", "polish empty states", "review from Ana"),
-        "Dora": ("synced the drive mirror", "archive stale folders", "none"),
+        "Juan": ("wrote the ADR draft", "circulate for review", "waiting on Pi"),
+        "Jose": ("fixed the WAL flake", "add regression test", "none"),
+        "Luis": ("sketched digest UI", "polish empty states", "review from Juan"),
+        "David": ("synced the drive mirror", "archive stale folders", "none"),
     }
 
     # Act: all four members check in on the same date (real handler, real repos, real DB).
@@ -140,10 +140,10 @@ def test_checkins_upsert_to_four_rows_and_by_date(day: Day) -> None:
         )
         assert result["ok"] is True
 
-    # Act: Ana corrects her check-in for the SAME date (different done/next/blockers).
+    # Act: Juan corrects his check-in for the SAME date (different done/next/blockers).
     corrected = checkin_submit(
         {
-            "member_id": ids["Ana"],
+            "member_id": ids["Juan"],
             "date": DAY,
             "done": "wrote the ADR draft + pinned the DST cases",
             "next": "circulate for review tomorrow",
@@ -156,15 +156,15 @@ def test_checkins_upsert_to_four_rows_and_by_date(day: Day) -> None:
         clock,
     )
 
-    # Assert: handler ok; DB holds EXACTLY 4 rows and Ana's row is the corrected one.
+    # Assert: handler ok; DB holds EXACTLY 4 rows and Juan's row is the corrected one.
     assert corrected["ok"] is True
     rows = checkins.by_date(DAY)
     assert len(rows) == 4
-    ana_row = next(row for row in rows if row.member_id == ids["Ana"])
-    assert ana_row.done == "wrote the ADR draft + pinned the DST cases"
-    assert ana_row.next == "circulate for review tomorrow"
-    assert ana_row.blockers == "none"
-    assert ana_row.source == "manual"
+    juan_row = next(row for row in rows if row.member_id == ids["Juan"])
+    assert juan_row.done == "wrote the ADR draft + pinned the DST cases"
+    assert juan_row.next == "circulate for review tomorrow"
+    assert juan_row.blockers == "none"
+    assert juan_row.source == "manual"
 
     # Assert: the checkins_by_date handler returns all 4 rows for that date.
     listed = checkins_by_date({"date": DAY}, members, checkins, settings, clock)
@@ -199,7 +199,7 @@ def test_dst_relays_pin_schedules_at_winter_and_summer(day: Day) -> None:
     """Wake-edit relays pin Guayaquil (no DST) equal at both instants and Berlin flipped 1h."""
     members, checkins, settings, clock = day
     ids = _member_ids(day)
-    ana, dora = ids["Ana"], ids["Dora"]
+    jose, juan = ids["Jose"], ids["Juan"]
 
     def wake_edit(member_id: int, wake: str) -> dict[str, object]:
         """Submit a real member_update wake change and return its ok handler result."""
@@ -222,23 +222,23 @@ def test_dst_relays_pin_schedules_at_winter_and_summer(day: Day) -> None:
     # Winter instant: away-and-back wake edits on both members; the back-edit relays the
     # stored wake resolved at THIS instant (Guayaquil on UTC-5, Berlin on CET UTC+1).
     clock.instant = WINTER
-    assert relay_schedule(wake_edit(ana, "08:30")) == "30 13 * * *"  # 08:30 - 5h
-    winter_guayaquil = wake_edit(ana, "08:00")  # restores the seeded wake, relays it
+    assert relay_schedule(wake_edit(jose, "06:30")) == "30 11 * * *"  # 06:30 + 5h
+    winter_guayaquil = wake_edit(jose, "06:00")  # restores the seeded wake, relays it
     assert winter_guayaquil["cron_relay"] == {
         "tool": "cronjob",
-        "args": {"action": "edit", "name": f"checkin-{ana}", "schedule": "0 13 * * *"},
-    }  # PIN: Guayaquil 08:00 @ winter
-    assert relay_schedule(wake_edit(dora, "09:00")) == "0 8 * * *"  # 09:00 - 1h
-    winter_berlin = wake_edit(dora, "08:30")
-    assert relay_schedule(winter_berlin) == "30 7 * * *"  # PIN: Berlin 08:30 @ winter
+        "args": {"action": "edit", "name": f"checkin-{jose}", "schedule": "0 11 * * *"},
+    }  # PIN: Guayaquil 06:00 @ winter
+    assert relay_schedule(wake_edit(juan, "07:00")) == "0 6 * * *"  # 07:00 - 1h
+    winter_berlin = wake_edit(juan, "06:30")
+    assert relay_schedule(winter_berlin) == "30 5 * * *"  # PIN: Berlin 06:30 @ winter
 
     # Summer instant: same away-and-back mechanics; only Berlin's offset changed (+2h).
     clock.instant = SUMMER
-    assert relay_schedule(wake_edit(ana, "08:30")) == "30 13 * * *"  # identical: no DST
-    summer_guayaquil = wake_edit(ana, "08:00")
-    assert relay_schedule(summer_guayaquil) == "0 13 * * *"  # PIN: Guayaquil 08:00 @ summer
+    assert relay_schedule(wake_edit(jose, "06:30")) == "30 11 * * *"  # identical: no DST
+    summer_guayaquil = wake_edit(jose, "06:00")
+    assert relay_schedule(summer_guayaquil) == "0 11 * * *"  # PIN: Guayaquil 06:00 @ summer
     assert relay_schedule(summer_guayaquil) == relay_schedule(winter_guayaquil)
-    assert relay_schedule(wake_edit(dora, "09:00")) == "0 7 * * *"  # 09:00 - 2h
-    summer_berlin = wake_edit(dora, "08:30")
-    assert relay_schedule(summer_berlin) == "30 6 * * *"  # PIN: Berlin 08:30 @ summer
+    assert relay_schedule(wake_edit(juan, "07:00")) == "0 5 * * *"  # 07:00 - 2h
+    summer_berlin = wake_edit(juan, "06:30")
+    assert relay_schedule(summer_berlin) == "30 4 * * *"  # PIN: Berlin 06:30 @ summer
     assert relay_schedule(summer_berlin) != relay_schedule(winter_berlin)

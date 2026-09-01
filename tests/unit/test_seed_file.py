@@ -32,10 +32,19 @@ def test_every_timezone_resolves_via_zoneinfo() -> None:
 
 
 def test_wakes_match_the_strict_hhmm_pattern() -> None:
-    """Every wake matches ^([01]\\d|2[0-3]):[0-5]\\d$ and the spec'd wake multiset."""
+    """Every wake matches ^([01]\\d|2[0-3]):[0-5]\\d$ and the founding team's wakes."""
     wakes = []
     for member in _members():
         wake = str(member["wake"])
         assert re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", wake), f"bad wake: {wake}"
         wakes.append(wake)
-    assert sorted(wakes) == ["08:00", "08:30", "08:30", "09:00"]
+    assert sorted(wakes) == ["05:30", "06:00", "06:30", "11:00"]
+
+
+def test_telegram_ids_are_null_or_integer() -> None:
+    """telegram_id is optional: null (not yet onboarded) or an int (init_db contract)."""
+    for member in _members():
+        telegram_id = member.get("telegram_id")
+        assert telegram_id is None or isinstance(telegram_id, int), (
+            f"bad telegram_id: {telegram_id!r}"
+        )

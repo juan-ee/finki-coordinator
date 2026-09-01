@@ -2,26 +2,27 @@
 # (marker: `seeded_at` in the settings table). After that the DB is authoritative
 # and this file is documentation only (proposal §1, §8.1 step 7).
 #
-# Fill real values before first boot: replace the placeholder telegram_ids with
-# each member's actual Telegram user ID. Wake times are LOCAL to each member's
-# timezone; the coordinator computes the UTC cron schedules.
-- name: Ana            # placeholder - replace with the real founding team
-  telegram_id: 100000001
-  timezone: America/Guayaquil
-  wake: "08:00"
-  role: product
-- name: Bruno
-  telegram_id: 100000002
-  timezone: America/Guayaquil
-  wake: "08:30"
-  role: backend
-- name: Caro
-  telegram_id: 100000003
-  timezone: America/Guayaquil
-  wake: "09:00"
-  role: frontend
-- name: Dora
-  telegram_id: 100000004
+# telegram_id is optional: null = the member has not onboarded yet (their Telegram
+# user ID is set later via member_update once they have messaged the bot). Wake
+# times are LOCAL to each member's timezone; the coordinator computes the UTC
+# cron schedules (never put a UTC time here).
+- name: Juan
+  telegram_id: null
   timezone: Europe/Berlin
-  wake: "08:30"
-  role: ops
+  wake: "06:30"
+  role: Founder
+- name: Jose
+  telegram_id: null
+  timezone: America/Guayaquil
+  wake: "06:00"
+  role: Founder
+- name: Luis
+  telegram_id: null
+  timezone: America/Guayaquil
+  wake: "05:30"
+  role: Founder
+- name: David
+  telegram_id: null
+  timezone: America/Guayaquil
+  wake: "11:00"
+  role: Founder
