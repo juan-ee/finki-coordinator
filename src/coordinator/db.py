@@ -18,10 +18,12 @@ class DatabaseError(sqlite3.Error):
 def connect(path: str | Path) -> sqlite3.Connection:
     """Open a SQLite connection with WAL journaling, a 5s busy timeout, and FK enforcement.
 
-    check_same_thread is lifted (upstream Hermes calls tool handlers from worker threads
-    while the plugin's connection is opened during discovery): concurrent use stays safe
-    because SQLite runs in serialized mode and busy_timeout serializes lock contention;
-    handlers keep to short single-statement transactions.
+    check_same_thread is lifted: the connection is opened during plugin discovery but
+    upstream Hermes invokes tool handlers from worker threads. Intra-connection safety
+    rests on SQLite serialized mode (sqlite3.threadsafety == 3 on CPython default builds:
+    statements cannot interleave or tear) plus handlers keeping to short single-statement
+    transactions — a future multi-statement handler sequence must add its own locking.
+    busy_timeout=5000 guards cross-connection contention (init_db, second processes).
     """
     try:
         conn = sqlite3.connect(path, check_same_thread=False)
