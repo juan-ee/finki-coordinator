@@ -6,8 +6,9 @@ settings with UTC-anchored, timezone-safe cron scheduling), an rclone-bisynced G
 Shared Drive knowledge base, and an OpenExecutive-derived operator persona.
 
 > 🚧 Under active development — Phase 0 (foundation) and Phase 1 (core bot) are
-> implemented; the Phase-1 manual gate is the current milestone. Knowledge sync and
-> hardening land next ([ROADMAP.md](ROADMAP.md)).
+> implemented; the Phase-1 manual gate is the current milestone. Knowledge sync
+> (Phase 2), the persona toggle (Phase 3), and hardening (Phase 4) land next
+> ([ROADMAP.md](ROADMAP.md)).
 
 ## What you get
 
@@ -18,11 +19,13 @@ Shared Drive knowledge base, and an OpenExecutive-derived operator persona.
   never by the LLM. DST is resolved at schedule-computation time from an explicit instant.
 - **The relay law** — the bot never recomputes schedules. Handlers return a pre-computed
   `cron_relay` payload that the agent relays verbatim to Hermes' cron.
-- **Drift guards** — `cron.model` pinned on every cron job, `TELEGRAM_ALLOWED_USERS` as a
-  static DM gate, model choice reserved to the owner.
-- **Runtime `AGENTS.md`** — generated from the roster DB (query map: mission →
-  `docs/product/brief.md`, decisions → `docs/decisions/`, status → `journal/` + check-ins,
-  tasks → kanban) and injected into every session.
+- **Drift guards** — `cron.model` pinned globally by `setup.sh` so every scheduled job
+  inherits the pin (the drift guard), `TELEGRAM_ALLOWED_USERS` as a static DM gate, model
+  choice reserved to the owner.
+- **Runtime `AGENTS.md`** — generated from the roster DB and injected into every session;
+  its query map: mission → `docs/product/brief.md` first, project questions →
+  `search_files` under `docs/`, status → `journal/` + `checkins_by_date`, tasks → the
+  `kanban_*` tools.
 - **Check-in & digest skills**, an operator persona (`prompts/persona.md` → `SOUL.md`),
   and a kanban board driven through Hermes' built-in tools.
 - **Google Shared Drive knowledge base** — rclone bisync wrapper ships in Phase 2.
@@ -46,8 +49,9 @@ plugin, never per job.
 
 ## Requirements
 
-- Docker + Compose. The reference target is a Raspberry Pi 5 (8 GB, 64-bit OS on SSD);
-  the first ARM64 build compiles from source and takes 20–60 min (one-time, cached after).
+- Docker + Compose. The reference target is a Raspberry Pi 5 (8 GB, 64-bit OS; an SSD is
+  strongly recommended — an SD-card install works but trades away durability). The first
+  ARM64 build compiles from source and takes 20–60 min (one-time, cached after).
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather)) + your numeric user ID.
 - An [OpenRouter](https://openrouter.ai/keys) API key **with a per-key credit limit** —
   that limit is the money valve.

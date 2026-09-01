@@ -397,6 +397,15 @@ Pi/human; the agent only produces/refreshes the verification script.
   hermes-setup → finki-coordinator (gh rename; old URL redirects); README.md expanded from
   the T0.1 stub to full quickstart/architecture/status. Content kept to shipped phases
   only (no promises beyond ROADMAP); Pi clone remote updated; no production code touched.
+  Off-queue by user direction (T0.1's "full usage docs land with a later task" was never
+  queued — tracked here instead). 2026-08-31 review verdict: two fresh-context axes on
+  23a8710..37f2638 — one hard-leaning finding (README claimed cron.model pinned "per job";
+  in-repo mechanism is the global setup.sh pin that jobs inherit — reworded, matching
+  proposal §"cron.model" intent), plus query-map paraphrase drift and SSD phrasing
+  (fixed); build-time window kept conservative for strangers (our 696 s measurement lives
+  in the gate sign-off, not the README). Mid-gate artefacts to settle at sign-off: Notes
+  entry preceded its rename follow-through commit (sequencing), and the gate's ticked
+  clone-SHA needs re-pinning to the final shipped commit.
 - 2026-08-29 Phase-gate red team (before T1.6, per AGENTS.md review protocol §4) —
   charter: break the core with NEW failing tests. Result: 12 real bugs / 54 attack cases;
   scheduling DST math held completely (explicit could-not-fail: Berlin ±1s flips, Lord
