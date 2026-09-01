@@ -16,9 +16,15 @@ class DatabaseError(sqlite3.Error):
 
 
 def connect(path: str | Path) -> sqlite3.Connection:
-    """Open a SQLite connection with WAL journaling, a 5s busy timeout, and FK enforcement."""
+    """Open a SQLite connection with WAL journaling, a 5s busy timeout, and FK enforcement.
+
+    check_same_thread is lifted (upstream Hermes calls tool handlers from worker threads
+    while the plugin's connection is opened during discovery): concurrent use stays safe
+    because SQLite runs in serialized mode and busy_timeout serializes lock contention;
+    handlers keep to short single-statement transactions.
+    """
     try:
-        conn = sqlite3.connect(path)
+        conn = sqlite3.connect(path, check_same_thread=False)
     except sqlite3.Error as exc:
         raise DatabaseError(f"cannot open SQLite store {path}: {exc}") from exc
     conn.row_factory = sqlite3.Row

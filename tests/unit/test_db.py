@@ -2,6 +2,7 @@
 
 import pathlib
 import sqlite3
+import threading
 
 import pytest
 
@@ -158,3 +159,30 @@ def test_migrate_conflicting_existing_schema_raises_database_error(
 
     with pytest.raises(DatabaseError, match="migration"):
         migrate(conn, applied_at=FIXED_APPLIED_AT)
+
+
+def test_connection_is_usable_from_a_foreign_thread(tmp_path: pathlib.Path) -> None:
+    """The runtime gateway calls handlers from worker threads (2026-09-01 gate).
+
+    register(ctx) opens the connection during plugin discovery (one thread); upstream
+    later invokes tool handlers from other threads. sqlite3's default check_same_thread
+    guard raises ProgrammingError on that topology, so connect() must lift the guard —
+    concurrent access stays safe via SQLite serialized mode + the busy_timeout pragma.
+    """
+    conn = connect(tmp_path / "cross-thread.db")
+    migrate(conn, applied_at=FIXED_APPLIED_AT)
+    errors: list[Exception] = []
+
+    def foreign_thread_query() -> None:
+        """Run one query from a non-creating thread, capturing any exception."""
+        try:
+            rows = conn.execute("SELECT count(*) FROM members").fetchall()
+            assert len(rows) == 1 and rows[0][0] == 0
+        except Exception as error:  # noqa: BLE001 — forwarded to the main thread's assert
+            errors.append(error)
+
+    worker = threading.Thread(target=foreign_thread_query)
+    worker.start()
+    worker.join(timeout=10)
+
+    assert not errors, f"foreign-thread use failed: {errors!r}"
