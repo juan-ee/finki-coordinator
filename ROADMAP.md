@@ -405,7 +405,10 @@ Pi/human; the agent only produces/refreshes the verification script.
   (fixed); build-time window kept conservative for strangers (our 696 s measurement lives
   in the gate sign-off, not the README). Mid-gate artefacts to settle at sign-off: Notes
   entry preceded its rename follow-through commit (sequencing), and the gate's ticked
-  clone-SHA needs re-pinning to the final shipped commit.
+  clone-SHA needs re-pinning to the final shipped commit. Delta re-review (37f2638..59b782c):
+  query-map/SSD/Notes FIXED; cron.model residual survived in the architecture diagram
+  (pre-diff line 40) — fixed in the follow-up commit; "Knowledge sync (Phase 2)" phase
+  phrasing is a deliberate scope description per spec-review finding (a2), kept.
 - 2026-08-29 Phase-gate red team (before T1.6, per AGENTS.md review protocol §4) —
   charter: break the core with NEW failing tests. Result: 12 real bugs / 54 attack cases;
   scheduling DST math held completely (explicit could-not-fail: Berlin ±1s flips, Lord

@@ -37,7 +37,7 @@ Telegram ⇄ hermes-agent gateway (Docker, network_mode: host — long-poll, no 
               │  static allow-list gate: TELEGRAM_ALLOWED_USERS
               ├─ coordinator plugin (this repo, src/coordinator — mounted read-only)
               │     └─ SQLite: data/hermes/hermes-coord.db (members / checkins / settings)
-              ├─ cron: UTC-anchored jobs, cron.model pinned per job
+              ├─ cron: UTC-anchored jobs, cron.model pinned (jobs inherit)
               └─ Google Shared Drive ⇄ data/project/  (rclone bisync — Phase 2)
 ```
 
