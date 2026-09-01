@@ -12,17 +12,22 @@
       Sign-off; Docker 29.7.2 + Compose v5.5.0 present)*.
 - [x] Repo cloned on the Pi at the intended commit: `git log --oneline -1` matches the
       release commit you mean to ship. *(66be366 — finki-coordinator rename + README)*
-- [ ] `.env` filled (from `.env.example`): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USERS`
+- [x] `.env` filled (from `.env.example`): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USERS`
       (contains YOUR user id), `OPENROUTER_API_KEY` ($20 monthly credit limit set in the
       OpenRouter console), Google Drive OAuth trio, `RCLONE_REMOTE`, optional
-      `RCLONE_ROOT_FOLDER_ID`. *(staged on the Pi; secrets pending)*
+      `RCLONE_ROOT_FOLDER_ID`. *(all real; Drive trio verified by shape AND live OAuth
+      exchange — Google minted a 1h access token; RCLONE_ROOT_FOLDER_ID empty by design:
+      consumer Drive account, no Workspace)*
 - [x] `config/config.yaml` filled (from `config/config.example.yaml`). *(hermes-demo /
-      HermesDemo / America/Guayaquil — validates against the schema)*
-- [ ] `./scripts/setup.sh` ran **on the Pi** in real mode (not `--dry-run`) and exited 0:
+      Fink-Labs / America/Guayaquil — validates against the schema)*
+- [x] `./scripts/setup.sh` ran **on the Pi** in real mode (not `--dry-run`) and exited 0:
       it validated the config, wrote `rclone.conf`, installed SOUL.md, and printed the
-      Hermes config fallback if the CLI was absent. *(dry-run passed; real run pending .env)*
-- [ ] `./scripts/init_db.py --db data/hermes/hermes-coord.db --seed config/members.seed.yaml`
+      Hermes config fallback if the CLI was absent. *(exit 0; all 5 steps green; fallback
+      printed with template default — actual pins applied in-container beforehand:
+      model/cron.model = z-ai/glm-5.3-flash, timezone UTC; idempotent re-run planned)*
+- [x] `./scripts/init_db.py --db data/hermes/hermes-coord.db --seed config/members.seed.yaml`
       ran once and exited 0 (re-run prints the `seeded_at` skip note and exits 0).
+      *(seed 2026-09-01T17:37:13Z; re-run skip note captured; 4 members)*
 
 ## 1. ARM64 build succeeds
 
@@ -154,4 +159,6 @@ In the DM (owner):
 
 Deviations observed (if any):
 
-- 
+- 2026-09-01: gate run PAUSED at step 3 — coordinator plugin not discovered by upstream
+  (missing plugin.yaml manifest; root cause + fix plan documented in ROADMAP Notes log).
+  Steps 2-9 boxes intentionally unticked. Pi OS on SD card (precondition 1) recorded above.

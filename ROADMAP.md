@@ -409,6 +409,15 @@ Pi/human; the agent only produces/refreshes the verification script.
   query-map/SSD/Notes FIXED; cron.model residual survived in the architecture diagram
   (pre-diff line 40) — fixed in the follow-up commit; "Knowledge sync (Phase 2)" phase
   phrasing is a deliberate scope description per spec-review finding (a2), kept.
+- 2026-09-01 Phase-1 gate run (PAUSED at step 3) — Pi deployment complete: setup.sh
+  real-mode exit 0, init_db seeded (+ idempotent re-run evidence), .env real incl. Drive
+  trio verified by live OAuth exchange, drive_root=Fink-Labs, model/cron.model pinned to
+  z-ai/glm-5.3-flash in-container, build 696s. DM test FAILED: bot exposed only built-in
+  toolsets, no coordinator tools/persona. ROOT CAUSE: upstream plugin contract
+  (hermes_cli/plugins.py:19) requires plugin.yaml manifest + __init__.py register(ctx);
+  src/coordinator ships register() but NO manifest → discovery silently skips it.
+  Fix (next session, TDD + full review): add src/coordinator/plugin.yaml (+ manifest
+  schema test), verify discovery in-container, restart, re-run gate steps 2-9.
 - 2026-08-29 Phase-gate red team (before T1.6, per AGENTS.md review protocol §4) —
   charter: break the core with NEW failing tests. Result: 12 real bugs / 54 attack cases;
   scheduling DST math held completely (explicit could-not-fail: Berlin ±1s flips, Lord
