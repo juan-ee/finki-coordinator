@@ -131,8 +131,10 @@ def test_register_wires_runtime_store_and_registers_seven_tools(
 
     assert registered == list(TOOL_SPECS)
     assert {call["name"] for call in ctx.calls} == set(TOOL_SPECS)
-    db_path = tmp_path / "workspace" / "data" / "hermes" / "hermes-coord.db"
-    assert db_path.is_file(), "runtime store must live at <HERMES_HOME>/workspace/..."
+    db_path = tmp_path / "workspace" / "hermes" / "hermes-coord.db"
+    assert db_path.is_file(), (
+        "runtime store must live at <HERMES_HOME>/workspace/hermes/hermes-coord.db"
+    )
     add = next(call["handler"] for call in ctx.calls if call["name"] == "member_add")
     added = add({"name": "Ana", "timezone": "America/Guayaquil", "wake": "08:00"})
     assert added["ok"] is True, added["summary"]

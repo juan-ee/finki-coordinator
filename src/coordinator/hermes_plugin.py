@@ -257,15 +257,16 @@ class SystemClock:
 
 
 def default_db_path() -> Path:
-    """Return the runtime coordinator DB path (<HERMES_HOME>/workspace/.../hermes-coord.db).
+    """Return the runtime coordinator DB path (<HERMES_HOME>/workspace/hermes/hermes-coord.db).
 
-    The layout mirrors docker-compose.yml (./data mounted at $HERMES_HOME/workspace)
-    and scripts/init_db.py's documented --db location; HERMES_HOME is always set inside
-    the Hermes container (upstream image default /opt/data), ~/.hermes is the upstream
-    host-side fallback.
+    docker-compose.yml mounts the host's ./data at $HERMES_HOME/workspace, so the store
+    seeded by scripts/init_db.py at <repo>/data/hermes/hermes-coord.db (its documented
+    --db location) appears in-container at <HERMES_HOME>/workspace/hermes/hermes-coord.db;
+    HERMES_HOME is always set inside the Hermes container (upstream image default
+    /opt/data), ~/.hermes is the upstream host-side fallback.
     """
     home = os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes")
-    return Path(home) / "workspace" / "data" / "hermes" / "hermes-coord.db"
+    return Path(home) / "workspace" / "hermes" / "hermes-coord.db"
 
 
 def wire_runtime() -> tuple[MembersRepo, CheckinsRepo, SettingsRepo, SystemClock]:
