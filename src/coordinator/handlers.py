@@ -17,8 +17,8 @@ from datetime import date, datetime
 from typing import Protocol, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from coordinator import scheduling
-from coordinator.repositories import (
+from . import scheduling
+from .repositories import (
     DEFAULTS,
     CheckinsRepository,
     MembersRepository,

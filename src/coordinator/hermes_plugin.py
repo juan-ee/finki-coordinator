@@ -1,18 +1,32 @@
-"""Thin Hermes adapter: TOOL_SPECS + register/dispatch — the only Hermes-aware module.
+"""Thin Hermes adapter: TOOL_SPECS + register/dispatch + runtime wiring.
 
 No business logic lives here (AGENTS.md rule 3): the adapter maps tool names -> JSON
 schemas -> the handlers.py functions and passes result dicts through untouched; concrete
-wiring (repos, clock) happens in register() and only there. Hermes itself is NOT a
-dependency and is never imported: the host context arrives injected via the HermesContext
-Protocol, so nothing at module import time can fail when Hermes is absent — the structural
-form of the guarded import. If Hermes symbols are ever needed here, import them lazily
-inside a function under try/except ImportError, never at module top level.
+wiring (repos, clock) happens in register_tools()/wire_runtime() and only there. Hermes
+itself is NOT a dependency and is never imported: the host context arrives injected via
+the HermesContext Protocol, so nothing at module import time can fail when Hermes is
+absent — the structural form of the guarded import. If Hermes symbols are ever needed
+here, import them lazily inside a function under try/except ImportError, never at module
+top level.
+
+Imports are relative (from .handlers, not coordinator.handlers) because upstream loads
+this directory as the package `hermes_plugins.coordinator` with __path__ set to the
+plugin dir — there is no top-level `coordinator` package on sys.path inside the Hermes
+container, so absolute self-imports would raise ModuleNotFoundError at plugin load.
+
+The entrypoint upstream discovery actually calls is coordinator.register (package
+__init__, single positional ctx): it uses wire_runtime() to build the SQLite-backed
+repo stack + SystemClock at the runtime layout, then delegates to register_tools().
 """
 
+import os
 from collections.abc import Callable
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Final, Protocol, TypedDict
 
-from coordinator.handlers import (
+from . import db
+from .handlers import (
     Clock,
     checkin_submit,
     checkins_by_date,
@@ -22,9 +36,12 @@ from coordinator.handlers import (
     setting_get,
     setting_set,
 )
-from coordinator.repositories import (
+from .repositories import (
+    CheckinsRepo,
     CheckinsRepository,
+    MembersRepo,
     MembersRepository,
+    SettingsRepo,
     SettingsRepository,
 )
 
@@ -205,7 +222,7 @@ def _bind(
     return tool
 
 
-def register(
+def register_tools(
     ctx: HermesContext,
     *,
     members: MembersRepository,
@@ -225,3 +242,41 @@ def register(
         )
         registered.append(name)
     return registered
+
+
+class SystemClock:
+    """Concrete Clock reading the host wall clock — the single time source in src/.
+
+    Rule 5 keeps datetime.now() out of the pure core; this adapter class is the one
+    sanctioned production instantiation point of the injected Clock (runtime wiring only).
+    """
+
+    def now(self) -> datetime:
+        """Return the current timezone-aware UTC instant."""
+        return datetime.now(UTC)
+
+
+def default_db_path() -> Path:
+    """Return the runtime coordinator DB path (<HERMES_HOME>/workspace/.../hermes-coord.db).
+
+    The layout mirrors docker-compose.yml (./data mounted at $HERMES_HOME/workspace)
+    and scripts/init_db.py's documented --db location; HERMES_HOME is always set inside
+    the Hermes container (upstream image default /opt/data), ~/.hermes is the upstream
+    host-side fallback.
+    """
+    home = os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes")
+    return Path(home) / "workspace" / "data" / "hermes" / "hermes-coord.db"
+
+
+def wire_runtime() -> tuple[MembersRepo, CheckinsRepo, SettingsRepo, SystemClock]:
+    """Open the runtime SQLite store (migrating as needed) and return the wired stack.
+
+    Migrations are idempotent (versioned), so a fresh store is brought up to the shipped
+    schema at gateway boot; seeding stays an explicit operator step (scripts/init_db.py).
+    """
+    clock = SystemClock()
+    path = default_db_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = db.connect(path)
+    db.migrate(conn, clock.now().isoformat())
+    return MembersRepo(conn), CheckinsRepo(conn), SettingsRepo(conn), clock

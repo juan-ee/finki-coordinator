@@ -1,0 +1,19 @@
+# Hermes plugin manifest — upstream discovery contract (hermes_cli/plugins.py at the
+# ref pinned in docker/HERMES_REF). Hermes loads this directory as a user plugin only
+# when (a) this file parses beside __init__.py, (b) the package module exposes a
+# register(ctx) entrypoint, and (c) "coordinator" is listed in config.yaml
+# plugins.enabled (one-time on the Pi: `hermes plugins enable coordinator`).
+# Fields are restricted to the upstream v1 known-field census; test_plugin_manifest.py
+# pins this file against that contract.
+name: coordinator
+version: 0.1.0  # keep in sync with src/coordinator/__init__.py — the test pins both
+description: Async project coordination on SQLite (members, check-ins, settings) with pre-computed cron relays for check-in schedules.
+kind: standalone
+provides_tools:
+  - member_add
+  - member_update
+  - member_list
+  - checkin_submit
+  - checkins_by_date
+  - setting_get
+  - setting_set

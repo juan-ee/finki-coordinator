@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 import pytest
 
 from coordinator import handlers, hermes_plugin
-from coordinator.hermes_plugin import TOOL_SPECS, dispatch, register
+from coordinator.hermes_plugin import TOOL_SPECS, dispatch, register_tools
 from coordinator.repositories import (
     DEFAULTS,
     Checkin,
@@ -229,15 +229,17 @@ def _wire() -> tuple[MembersRepository, CheckinsRepository, SettingsRepository, 
     return FakeMembers(), FakeCheckins(), FakeSettings(), FakeClock()
 
 
-# --- register -------------------------------------------------------------------------
+# --- register_tools -------------------------------------------------------------------
 
 
-def test_register_records_exactly_seven_registrations() -> None:
-    """register() calls ctx.register_tool once per TOOL_SPECS entry, all toolset=coordinator."""
+def test_register_tools_records_exactly_seven_registrations() -> None:
+    """register_tools() calls ctx.register_tool once per TOOL_SPECS entry, all coordinator."""
     ctx = FakeCtx()
     members, checkins, settings, clock = _wire()
 
-    registered = register(ctx, members=members, checkins=checkins, settings=settings, clock=clock)
+    registered = register_tools(
+        ctx, members=members, checkins=checkins, settings=settings, clock=clock
+    )
 
     names = [call["name"] for call in ctx.calls]
     assert len(ctx.calls) == 7
@@ -349,10 +351,10 @@ def test_dispatch_unknown_tool_raises_keyerror() -> None:
 
 
 def test_registered_callable_dispatches_with_the_wired_deps() -> None:
-    """The callable register() hands ctx routes a payload into the right handler."""
+    """A callable register_tools() handed ctx routes a payload into the right handler."""
     ctx = FakeCtx()
     members, checkins, settings, clock = _wire()
-    register(ctx, members=members, checkins=checkins, settings=settings, clock=clock)
+    register_tools(ctx, members=members, checkins=checkins, settings=settings, clock=clock)
 
     call = next(c for c in ctx.calls if c["name"] == "member_add")
     result = call["handler"]({"name": "Bob", "timezone": "Europe/Berlin", "wake": "08:00"})
@@ -361,7 +363,7 @@ def test_registered_callable_dispatches_with_the_wired_deps() -> None:
     assert result["ok"] is True
     member = members.get(1)
     assert member is not None
-    assert member.name == "Bob"  # the effect landed in the fake register() wired in
+    assert member.name == "Bob"  # the effect landed in the repo register_tools() wired in
     assert member.timezone == "Europe/Berlin"
 
 
