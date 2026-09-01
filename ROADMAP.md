@@ -103,9 +103,12 @@ Pi/human; the agent only produces/refreshes the verification script.
   second run = no duplicates; run without seed = empty members table.
 
 - [x] **T0.11 `DOC` — config artifacts finalized** — `config/members.seed.yaml`
-  (4 members: 3× `America/Guayaquil`, 1× `Europe/Berlin`, wakes 08:00/08:30/09:00/08:30),
-  `config/config.example.yaml`, `.env.example` (exact content per `proposal.md` §2 incl.
-  `TELEGRAM_ALLOWED_USERS` + group-scoped vars + OpenRouter-limit comment).
+  (4 members: 3× `America/Guayaquil`, 1× `Europe/Berlin`; founding-team roster
+  Juan/Jose/Luis/David per owner direction 2026-09-01 — wakes 06:30/06:00/05:30/11:00,
+  `telegram_id` null until each member onboards, Juan's id committed by owner direction —
+  see Notes log), `config/config.example.yaml`, `.env.example` (exact content per
+  `proposal.md` §2 incl. `TELEGRAM_ALLOWED_USERS` + group-scoped vars + OpenRouter-limit
+  comment).
   Tests: `tests/unit/test_seed_file.py` — seed parses; every tz resolvable via zoneinfo;
   wakes match `^([01]\d|2[0-3]):[0-5]\d$`.
 

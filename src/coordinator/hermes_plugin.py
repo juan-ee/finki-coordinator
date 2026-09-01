@@ -1,8 +1,10 @@
 """Thin Hermes adapter: TOOL_SPECS + register/dispatch + runtime wiring.
 
 No business logic lives here (AGENTS.md rule 3): the adapter maps tool names -> JSON
-schemas -> the handlers.py functions and passes result dicts through untouched; concrete
-wiring (repos, clock) happens in register_tools()/wire_runtime() and only there. Hermes
+schemas -> the handlers.py functions; handler result dicts pass through dispatch()
+untouched and are serialized to JSON only at the host boundary (upstream accepts str
+tool results only — see _bind). Concrete wiring (repos, clock) happens in
+register_tools()/wire_runtime() and only there. Hermes
 itself is NOT a dependency and is never imported: the host context arrives injected via
 the HermesContext Protocol, so nothing at module import time can fail when Hermes is
 absent — the structural form of the guarded import. If Hermes symbols are ever needed
