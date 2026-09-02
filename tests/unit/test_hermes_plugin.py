@@ -292,6 +292,24 @@ def test_schemas_mirror_handler_payload_fields_exactly() -> None:
 # --- dispatch wiring ------------------------------------------------------------------
 
 
+def test_registered_schemas_carry_the_model_facing_description() -> None:
+    """Registered schemas embed ToolSpec.description as schema["description"].
+
+    Upstream serves schema["description"] to the model; the register_tool(description=...)
+    value is ToolEntry registry metadata only and is NOT copied into a schema lacking one
+    (v0.21.0 plugin docs) — so the schema must carry it at registration time.
+    """
+    ctx = FakeCtx()
+    members, checkins, settings, clock = _wire()
+    register_tools(ctx, members=members, checkins=checkins, settings=settings, clock=clock)
+
+    assert len(ctx.calls) == 7
+    for call in ctx.calls:
+        schema = call["schema"]
+        assert isinstance(schema, dict), call["name"]
+        assert schema.get("description") == TOOL_SPECS[call["name"]]["description"], call["name"]
+
+
 def test_dispatch_member_add_reaches_the_member_add_handler() -> None:
     """A member_add payload inserts a member — proof the add handler (not update) ran."""
     members, checkins, settings, clock = _wire()

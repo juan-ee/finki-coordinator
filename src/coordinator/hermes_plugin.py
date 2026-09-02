@@ -241,13 +241,18 @@ def register_tools(
     settings: SettingsRepository,
     clock: Clock,
 ) -> list[str]:
-    """Register every TOOL_SPECS tool with the host ctx; return the names in spec order."""
+    """Register every TOOL_SPECS tool with the host ctx; return the names in spec order.
+
+    ToolSpec.description stays the single source: it is injected into the registered
+    schema as schema["description"] (the model-facing text upstream serves) while the
+    description= kwarg remains registry metadata — both derive from the same field.
+    """
     registered: list[str] = []
     for name, spec in TOOL_SPECS.items():
         ctx.register_tool(
             name=name,
             description=spec["description"],
-            schema=spec["schema"],
+            schema={"description": spec["description"], **spec["schema"]},
             handler=_bind(name, members, checkins, settings, clock),
             toolset=spec["toolset"],
         )
