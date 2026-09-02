@@ -553,3 +553,16 @@ Pi/human; the agent only produces/refreshes the verification script.
   HERMES_REF" DISMISSED with evidence: tests/test_compose.py asserts exactly that and
   ran green on the new SHA. Manual Pi steps (rebuild + abbreviated gate) remain for the
   operator per docker/README.md.
+- 2026-09-02 T1.9 Pi execution (owner-directed, driven over SSH from the Mac) — pushed
+  09b52f2..864f585, Pi pulled to 864f585, `docker compose build` exit 0 in 488 s (warm
+  cache; gate build was 696 s), `up -d` recreated the container. Headless verification:
+  `hermes --version` = v0.21.0 (2026.8.31) in-container; `hermes plugins list` shows
+  coordinator enabled (user, 0.1.0); 2 established TCP connections to Telegram DC ranges
+  (long-poll live); `plugins.enabled`/`toolsets`/`cron.model` (z-ai/glm-5.3-flash)
+  intact; checkin-1 active — last run ok 2026-09-02T04:30Z, next 2026-09-03T04:30Z.
+  Boot-log warnings benign (check_fn gates for unrelated tools; one auxiliary-client
+  PAID-lane notice re the `google/gemini-3.6-flash` OpenRouter fallback — cost surface
+  flagged to owner, `auxiliary.free_only`/`auxiliary.openrouter_model` are the knobs).
+  Remaining (human-only): the DM half of the abbreviated gate — persona voice, 7 tools,
+  roster, kanban. Note: only checkin-1 exists — correct state: the other founders'
+  telegram_ids are still null; their jobs are created conversationally at onboarding.
