@@ -1,7 +1,10 @@
-"""Smoke tests for scripts/setup.sh: bash syntax and no-write --dry-run behavior."""
+"""Smoke tests for scripts/setup.sh: bash syntax, no-write --dry-run, and the
+first-boot project-template seed (step 7) that never overwrites existing files."""
 
 import os
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -59,6 +62,8 @@ def test_dry_run_exits_zero_writes_nothing_and_leaks_no_secrets(tmp_path: Path) 
         "PATH": os.environ["PATH"],
         "HOME": str(home),
         "HERMES_HOME": str(hermes_home),
+        # Fresh seed target -> the dry-run plan is deterministic (all WOULD copy).
+        "PROJECT_DATA_ROOT": str(tmp_path / "data"),
         **REQUIRED_ENV,
         **OPTIONAL_ENV,
     }
@@ -101,6 +106,81 @@ def test_dry_run_exits_zero_writes_nothing_and_leaks_no_secrets(tmp_path: Path) 
         'docker compose exec gateway hermes config set toolsets \'["hermes-cli", "kanban"]\''
         in stdout
     )
+    # T2.3: the seed step plans the first-boot copy of every template file (fresh
+    # PROJECT_DATA_ROOT above -> nothing exists yet, so every file is a WOULD copy).
+    assert "WOULD seed:" in stdout
+    assert "WOULD copy: README.md" in stdout
+    assert "WOULD copy: docs/index.md" in stdout
+    assert "WOULD copy: inbox/.gitkeep" in stdout
+    assert "exists (keep):" not in stdout
 
     for value in SECRET_VALUES:
         assert value not in stdout + proc.stderr, "dry-run echoed a secret value"
+
+
+def _real_mode_env(tmp_path: Path) -> dict[str, str]:
+    """Fixture env for a real (non-dry) run with every write target under tmp_path."""
+    return {
+        # Prepend the running interpreter's bin dir so bare `python` in the script
+        # resolves to the project venv (coordinator importable) on any host.
+        "PATH": f"{Path(sys.executable).parent}{os.pathsep}{os.environ['PATH']}",
+        "HOME": str(tmp_path / "home"),
+        "HERMES_HOME": str(tmp_path / "hermes-home"),
+        "PROJECT_DATA_ROOT": str(tmp_path / "data"),
+        "CONFIG_YAML": str(tmp_path / "config.yaml"),
+        "CONFIG_SCHEMA": str(REPO_ROOT / "config" / "config.schema.json"),
+        **REQUIRED_ENV,
+        **OPTIONAL_ENV,
+    }
+
+
+def test_real_mode_seeds_project_template_without_overwriting(tmp_path: Path) -> None:
+    """Real mode seeds project-template/ once; existing files are never overwritten."""
+    project = tmp_path / "data" / "project"
+    # The committed example validates against the schema, so step 2 passes with it.
+    shutil.copyfile(REPO_ROOT / "config" / "config.example.yaml", tmp_path / "config.yaml")
+    # Operator content that must survive the seed (the never-overwrite guarantee).
+    project.mkdir(parents=True)
+    (project / "README.md").write_text("# custom operator content\n", encoding="utf-8")
+
+    env = _real_mode_env(tmp_path)
+    first = subprocess.run(
+        ["bash", str(SETUP_SH)],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        env=env,
+        check=False,
+    )
+    assert first.returncode == 0, f"real run failed:\n{first.stdout}\n{first.stderr}"
+    assert "seeded:" in first.stdout
+
+    assert (project / "README.md").read_text(encoding="utf-8") == "# custom operator content\n"
+    assert (project / "docs" / "index.md").is_file()
+    for empty_dir in ("inbox", "assets", "people", "journal", ".archive"):
+        assert (project / empty_dir / ".gitkeep").is_file(), empty_dir
+
+    def snapshot() -> dict[str, str]:
+        """Content map of every seeded file, keyed by path relative to project/."""
+        return {
+            str(p.relative_to(project)): p.read_text(encoding="utf-8")
+            for p in sorted(project.rglob("*"))
+            if p.is_file()
+        }
+
+    before = snapshot()
+    del before["docs/index.md"]  # this file is edited below; compare the rest verbatim
+    (project / "docs" / "index.md").write_text("# edited by the team\n", encoding="utf-8")
+    second = subprocess.run(
+        ["bash", str(SETUP_SH)],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        env=env,
+        check=False,
+    )
+    assert second.returncode == 0, f"re-run failed:\n{second.stdout}\n{second.stderr}"
+    after = snapshot()
+    assert after["docs/index.md"] == "# edited by the team\n"
+    del after["docs/index.md"]
+    assert after == before

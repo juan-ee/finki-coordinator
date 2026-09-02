@@ -224,7 +224,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   constraints), `adr.md` (context/decision/consequences), `meeting-notes.md`,
   `proposal.md`.
 
-- [ ] **T2.3 `DOC` — `project-template/` + setup copy step** — seed content for
+- [x] **T2.3 `DOC` — `project-template/` + setup copy step** — seed content for
   `data/project/`: `README.md` (human onboarding), `docs/index.md` stub, empty
   `inbox/ assets/ people/ journal/ .archive/`; `setup.sh` copies it into `data/project/`
   on first boot (never overwrites existing files).
@@ -605,3 +605,19 @@ Pi/human; the agent only produces/refreshes the verification script.
   candidate); RUN_KIND/LOG_PREFIX mode clump (only if the script grows). YAGNI: bisync
   lockfile/staleness recovery left to T4.2's runbook + phase-4 backups; real (non-dry) mode
   untested by design (needs rclone+credentials; dry-run covers the exact arg array).
+- 2026-09-02 T2.3 — DOC task executed directly per orchestrator protocol (no subagent, no
+  review; make check green). Judgement calls: (1) setup.sh gains step 7 (labels renumbered
+  1/6..6/6 → 1/7..7/7, T1.7 pattern) — seeds project-template/ into
+  ${PROJECT_DATA_ROOT:-$REPO_ROOT/data}/project with per-file exists-guards; existing files
+  are never overwritten (the T2.3 guarantee); (2) three testability env knobs added
+  (CONFIG_YAML / CONFIG_SCHEMA / PROJECT_DATA_ROOT; precedent RCLONE_CONFIG_PATH from T0.13)
+  so the real-mode seed is testable without writing the repo tree — defaults keep production
+  behavior identical; (3) the five empty dirs carry .gitkeep markers (git does not track
+  empty dirs); they land on the Drive as invisible dotfiles, acceptable; (4) the spec's seed
+  list is CLOSED (README.md, docs/index.md stub, inbox/ assets/ people/ journal/ .archive/)
+  — data/project/templates/ and docs/product/ are deliberately NOT seeded: the human fills
+  brief.md per proposal step 8; seeding the repo's templates/ dir into data/project/
+  templates/ is a cheap follow-up candidate left to the owner; (5) new real-mode smoke test
+  runs the full script with fixture env (no mocks, offline): proves exit 0, seeded contents,
+  and never-overwrite (a pre-existing custom README.md survives; docs/index.md edited
+  between runs survives run 2), using the committed example yaml as the valid config.
