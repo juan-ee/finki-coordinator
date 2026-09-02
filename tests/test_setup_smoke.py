@@ -86,6 +86,16 @@ def test_dry_run_exits_zero_writes_nothing_and_leaks_no_secrets(tmp_path: Path) 
     assert "hermes config set model" in stdout
     assert "hermes config set cron.model" in stdout
     assert "hermes config set timezone UTC" in stdout
+    # T1.7: the plan must include the plugin + toolsets runtime config (upstream gates
+    # user plugins behind plugins.enabled; the kanban check_fn reads top-level toolsets).
+    assert 'hermes config set plugins.enabled ["coordinator"]' in stdout
+    assert 'hermes config set toolsets ["hermes-cli", "kanban"]' in stdout
+    # The CLI-absent fallback names the in-container variants (the plugin dir only
+    # materializes inside the container's mount namespace).
+    assert 'docker compose exec gateway hermes config set plugins.enabled ["coordinator"]' in stdout
+    assert (
+        'docker compose exec gateway hermes config set toolsets ["hermes-cli", "kanban"]' in stdout
+    )
 
     for value in SECRET_VALUES:
         assert value not in stdout + proc.stderr, "dry-run echoed a secret value"

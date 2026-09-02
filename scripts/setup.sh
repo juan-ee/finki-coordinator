@@ -10,13 +10,16 @@
 # Usage: scripts/setup.sh [--dry-run]
 #
 # Steps:
-#   1/5 check required env keys (TELEGRAM_BOT_TOKEN, OPENROUTER_API_KEY,
+#   1/6 check required env keys (TELEGRAM_BOT_TOKEN, OPENROUTER_API_KEY,
 #       GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET, GOOGLE_DRIVE_REFRESH_TOKEN)
-#   2/5 validate config/config.yaml via 'python -m coordinator.config validate'
-#   3/5 write rclone.conf from env (remote, client id/secret, refresh token, root folder)
-#   4/5 install prompts/persona.md -> ${HERMES_HOME:-$HOME/.hermes}/SOUL.md
-#   5/5 apply Hermes config: model + cron.model pin + timezone UTC ('hermes config set',
+#   2/6 validate config/config.yaml via 'python -m coordinator.config validate'
+#   3/6 write rclone.conf from env (remote, client id/secret, refresh token, root folder)
+#   4/6 install prompts/persona.md -> ${HERMES_HOME:-$HOME/.hermes}/SOUL.md
+#   5/6 apply Hermes config: model + cron.model pin + timezone UTC ('hermes config set',
 #       with a printed manual fallback when the CLI is absent)
+#   6/6 enable the coordinator plugin + kanban toolset (plugins.enabled / top-level
+#       toolsets — upstream opt-in gates; printed in-container fallback when the CLI
+#       is absent, since the plugin dir only materializes inside the container)
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -48,7 +51,7 @@ for arg in "$@"; do
 done
 
 step_env_check() {
-  echo "== [1/5] Required env keys (names only; values are never printed) =="
+  echo "== [1/6] Required env keys (names only; values are never printed) =="
   local missing=() key
   for key in "${REQUIRED_KEYS[@]}"; do
     if [[ -n "${!key:-}" ]]; then
@@ -71,7 +74,7 @@ step_env_check() {
 }
 
 step_validate_config() {
-  echo "== [2/5] Validate config/config.yaml (python -m coordinator.config validate) =="
+  echo "== [2/6] Validate config/config.yaml (python -m coordinator.config validate) =="
   if [[ ! -f "$CONFIG_YAML" ]]; then
     if [[ "$DRY_RUN" -eq 1 ]]; then
       echo "  WARNING: $CONFIG_YAML not found (the repo ships config/config.example.yaml only)"
@@ -90,7 +93,7 @@ step_validate_config() {
 }
 
 step_write_rclone_conf() {
-  echo "== [3/5] rclone.conf (values go into the file, never onto stdout) =="
+  echo "== [3/6] rclone.conf (values go into the file, never onto stdout) =="
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "  WOULD write: $RCLONE_CONF_PATH"
     echo "  stanza shape (env-derived values redacted):"
@@ -123,7 +126,7 @@ RCLONE_EOF
 }
 
 step_install_soul_md() {
-  echo "== [4/5] SOUL.md (persona) =="
+  echo "== [4/6] SOUL.md (persona) =="
   if [[ "$DRY_RUN" -eq 1 ]]; then
     if [[ -f "$PERSONA_SRC" ]]; then
       echo "  WOULD install: $PERSONA_SRC -> $HERMES_HOME_DIR/SOUL.md"
@@ -149,7 +152,7 @@ hermes_set() {
 }
 
 step_apply_hermes_config() {
-  echo "== [5/5] Hermes config (model + cron.model pin + timezone UTC) =="
+  echo "== [5/6] Hermes config (model + cron.model pin + timezone UTC) =="
   local model="$HERMES_MODEL_VALUE"
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "  WOULD run (via the hermes CLI if present; otherwise apply manually):"
@@ -168,6 +171,33 @@ step_apply_hermes_config() {
   hermes_set model "$model"
   hermes_set cron.model "$model"
   hermes_set timezone UTC
+}
+
+step_enable_plugin_toolsets() {
+  echo "== [6/6] Coordinator plugin + kanban toolset (runtime config) =="
+  # Upstream gates user plugins behind config.yaml plugins.enabled (opt-in), and the
+  # kanban tools' check_fn reads the top-level toolsets list (the all wildcard does NOT
+  # enable kanban). Written via 'hermes config set' — a pure config write, so it needs
+  # no on-disk plugin discovery (the plugin dir only materializes inside the container).
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "  WOULD run (via the hermes CLI if present; otherwise apply after boot):"
+    echo "    hermes config set plugins.enabled [\"coordinator\"]"
+    echo "    hermes config set toolsets [\"hermes-cli\", \"kanban\"]"
+    echo "  If the CLI is absent, run inside the container after 'docker compose up -d':"
+    echo "    docker compose exec gateway hermes config set plugins.enabled [\"coordinator\"]"
+    echo "    docker compose exec gateway hermes config set toolsets [\"hermes-cli\", \"kanban\"]"
+    echo "    docker compose restart gateway   # only if the gateway was already running"
+    return 0
+  fi
+  if ! command -v hermes >/dev/null 2>&1; then
+    echo "  hermes CLI not found on PATH; apply inside the container after 'docker compose up -d':"
+    echo "    docker compose exec gateway hermes config set plugins.enabled [\"coordinator\"]"
+    echo "    docker compose exec gateway hermes config set toolsets [\"hermes-cli\", \"kanban\"]"
+    echo "    docker compose restart gateway   # only if the gateway was already running"
+    return 0
+  fi
+  hermes_set "plugins.enabled" '["coordinator"]'
+  hermes_set "toolsets" '["hermes-cli", "kanban"]'
 }
 
 step_next_steps() {
@@ -190,6 +220,7 @@ main() {
   step_write_rclone_conf
   step_install_soul_md
   step_apply_hermes_config
+  step_enable_plugin_toolsets
   step_next_steps
   echo "done."
 }

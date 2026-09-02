@@ -2,7 +2,7 @@
 # ref pinned in docker/HERMES_REF). Hermes loads this directory as a user plugin only
 # when (a) this file parses beside __init__.py, (b) the package module exposes a
 # register(ctx) entrypoint, and (c) "coordinator" is listed in config.yaml
-# plugins.enabled (one-time on the Pi: `hermes plugins enable coordinator`).
+# plugins.enabled (applied by scripts/setup.sh step 6 — upstream opt-in gate).
 # Fields are restricted to the upstream v1 known-field census; test_plugin_manifest.py
 # pins this file against that contract.
 name: coordinator
