@@ -215,7 +215,7 @@ Pi/human; the agent only produces/refreshes the verification script.
 
 ## Phase 2 — Knowledge
 
-- [ ] **T2.1 `scripts/sync.sh`** — bisync wrapper: logs to `data/logs/sync.log`, boot mode
+- [x] **T2.1 `scripts/sync.sh`** — bisync wrapper: logs to `data/logs/sync.log`, boot mode
   flag, refuses `--resync` without `--i-know-what-im-doing`, uses `RCLONE_REMOTE` +
   `RCLONE_ROOT_FOLDER_ID` from env. Tests: `tests/test_sync_smoke.py` — `bash -n`;
   dry-run without env vars exits non-zero with actionable message.
@@ -578,3 +578,30 @@ Pi/human; the agent only produces/refreshes the verification script.
   process by design; the spend is operator-sanctioned (money-valve philosophy: deliberate
   + documented). Applied in-container via `hermes config set`, gateway restarted, value
   verified post-restart; main chat model and cron.model untouched.
+- 2026-09-02 T2.1 — review verdict: no hard violations (two fresh blind axes, fixed point
+  0eed164; spec axis probed exit codes, log contents, resync gate, rc propagation live in a
+  mktemp sandbox). Both axes flagged the unchecked checkbox — DOWNGRADED to process note:
+  the orchestrator protocol marks checkboxes in the post-review chore commit (T0.2 note 6
+  precedent). Judgement calls: (1) RCLONE_REMOTE required, RCLONE_ROOT_FOLDER_ID optional
+  per .env.example's "optional:" comment — with the folder id unset the wrapper bisyncs the
+  remote ROOT into data/project/ silently; spec-consistent, but a loud stderr warning is the
+  cheap fix candidate if the Pi gate surprises; (2) folder id maps to rclone's documented
+  --drive-root-folder-id (belt-and-braces with the rclone.conf pin setup.sh already writes);
+  (3) --boot is a tagging flag ([boot] log/console marker, no behavior change) — boot-time
+  invocation wiring is a later task; the phase-2 gate observes cadence+boot on the Pi;
+  (4) fail-loud pre-flight guards beyond the spec text, none silent (rclone-on-PATH pointer;
+  non-resync real run refuses when data/project/ is absent → one-time --resync
+  --i-know-what-im-doing bootstrap; resync mkdir -p's the mirror; usage()+exit-2 convention
+  on every validation error; rclone rc propagation with a log end-line); (5) --dry-run is
+  strictly zero-side-effect (prints the composed command, no log write, no mkdir) — what
+  makes the suite offline; (6) -v added to the composed command for the file-level detail
+  the phase-2 gate needs; (7) `date -u` log stamps are I/O labeling, not schedule math
+  (rule-4 carve-out documented in the header); (8) tests force the no-rclone path via a
+  symlinked fake-bin PATH (corollary: subprocess env= resolves the CHILD executable on the
+  child PATH, so tests resolve bash via shutil.which from the parent env); (9) batch red
+  (all 9 tests before implementation) per the task brief's explicit red→green instruction.
+  Standards-axis smells (all cosmetic, no fix round): flag/env docs duplicated in header vs
+  usage() heredoc (one canonical list candidate); repeated date stamp (stamp() helper
+  candidate); RUN_KIND/LOG_PREFIX mode clump (only if the script grows). YAGNI: bisync
+  lockfile/staleness recovery left to T4.2's runbook + phase-4 backups; real (non-dry) mode
+  untested by design (needs rclone+credentials; dry-run covers the exact arg array).
