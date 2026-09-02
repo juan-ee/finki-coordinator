@@ -252,7 +252,7 @@ def register_tools(
         ctx.register_tool(
             name=name,
             description=spec["description"],
-            schema={"description": spec["description"], **spec["schema"]},
+            schema={**spec["schema"], "description": spec["description"]},
             handler=_bind(name, members, checkins, settings, clock),
             toolset=spec["toolset"],
         )
