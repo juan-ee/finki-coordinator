@@ -173,6 +173,14 @@ step_apply_hermes_config() {
   hermes_set timezone UTC
 }
 
+print_in_container_fallback() {
+  # One shared block: the exact commands when the hermes CLI is absent (values quoted
+  # so a copy-pasted line survives bash globbing).
+  echo "    docker compose exec gateway hermes config set plugins.enabled '[\"coordinator\"]'"
+  echo "    docker compose exec gateway hermes config set toolsets '[\"hermes-cli\", \"kanban\"]'"
+  echo "    docker compose restart gateway   # only if the gateway was already running"
+}
+
 step_enable_plugin_toolsets() {
   echo "== [6/6] Coordinator plugin + kanban toolset (runtime config) =="
   # Upstream gates user plugins behind config.yaml plugins.enabled (opt-in), and the
@@ -181,19 +189,15 @@ step_enable_plugin_toolsets() {
   # no on-disk plugin discovery (the plugin dir only materializes inside the container).
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "  WOULD run (via the hermes CLI if present; otherwise apply after boot):"
-    echo "    hermes config set plugins.enabled [\"coordinator\"]"
-    echo "    hermes config set toolsets [\"hermes-cli\", \"kanban\"]"
+    echo "    hermes config set plugins.enabled '[\"coordinator\"]'"
+    echo "    hermes config set toolsets '[\"hermes-cli\", \"kanban\"]'"
     echo "  If the CLI is absent, run inside the container after 'docker compose up -d':"
-    echo "    docker compose exec gateway hermes config set plugins.enabled [\"coordinator\"]"
-    echo "    docker compose exec gateway hermes config set toolsets [\"hermes-cli\", \"kanban\"]"
-    echo "    docker compose restart gateway   # only if the gateway was already running"
+    print_in_container_fallback
     return 0
   fi
   if ! command -v hermes >/dev/null 2>&1; then
     echo "  hermes CLI not found on PATH; apply inside the container after 'docker compose up -d':"
-    echo "    docker compose exec gateway hermes config set plugins.enabled [\"coordinator\"]"
-    echo "    docker compose exec gateway hermes config set toolsets [\"hermes-cli\", \"kanban\"]"
-    echo "    docker compose restart gateway   # only if the gateway was already running"
+    print_in_container_fallback
     return 0
   fi
   hermes_set "plugins.enabled" '["coordinator"]'
