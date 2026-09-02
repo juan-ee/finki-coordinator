@@ -566,3 +566,15 @@ Pi/human; the agent only produces/refreshes the verification script.
   Remaining (human-only): the DM half of the abbreviated gate — persona voice, 7 tools,
   roster, kanban. Note: only checkin-1 exists — correct state: the other founders'
   telegram_ids are still null; their jobs are created conversationally at onboarding.
+- 2026-09-02 auxiliary fallback pin (owner-directed) — boot log showed the auxiliary
+  client's PAID-lane warning: the step-2 OpenRouter fallback engaged with the built-in
+  default `google/gemini-3.6-flash` (agent/auxiliary_client.py `_OPENROUTER_MODEL` at
+  v0.21.0; text-lane only — vision tasks resolve through a separate vision-capable
+  path). Owner pinned `auxiliary.openrouter_model = deepseek/deepseek-v4-flash-0731`
+  (OpenRouter catalog: $0.065/M input, $0.18/M output, 1.31M context, text-only; not a
+  `:free` SKU). `auxiliary.free_only` stays false — when true, Hermes SKIPS the
+  OpenRouter fallback entirely for a non-free model (`_try_openrouter`), which would
+  contradict the owner's choice. The PAID-lane warning remains one-time-per-model per
+  process by design; the spend is operator-sanctioned (money-valve philosophy: deliberate
+  + documented). Applied in-container via `hermes config set`, gateway restarted, value
+  verified post-restart; main chat model and cron.model untouched.
