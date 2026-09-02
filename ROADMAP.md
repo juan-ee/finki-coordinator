@@ -173,6 +173,46 @@ Pi/human; the agent only produces/refreshes the verification script.
   *(2026-09-02: gate executed to Sign-off — steps 2-9 ticked with evidence, deviations
   recorded in the gate doc and Notes log; operator signature in phase1.md.)*
 
+### Phase 1 follow-ups — upstream v0.21.0 alignment (queued 2026-09-02, owner direction)
+
+- [ ] **T1.7 `scripts/setup.sh` applies the plugin + toolsets runtime config** — new
+  step 6: `hermes config set plugins.enabled '["coordinator"]'` and
+  `hermes config set toolsets '["hermes-cli", "kanban"]'` — via the `hermes` CLI when
+  present, otherwise the printed in-container fallback (same pattern as step 5; renumber
+  the steps 1/5..5/5 → 1/6..6/6 and update the docstring). Closes the phase-1 gate
+  deviation: upstream gates user plugins behind `plugins.enabled` (opt-in), and the
+  kanban tools' check_fn reads the top-level `toolsets` list (the `all` wildcard does
+  NOT enable kanban) — a stranger clone would otherwise silently load no coordinator
+  tools and no kanban. Update the plugin.yaml header comment to point at setup.sh.
+  Tests: `tests/test_setup_smoke.py` — dry-run prints both `config set` lines and still
+  exits 0 writing nothing; no secret leakage.
+  Notes: `hermes config set plugins.enabled '["coordinator"]'` is a pure config write
+  (no on-disk discovery dependency), chosen over `hermes plugins enable coordinator`
+  because the plugin dir only materializes inside the container's mount namespace; the
+  value re-asserts the template baseline on idempotent re-runs.
+
+- [ ] **T1.8 Tool descriptions ride in the JSON schema** — upstream v0.21.0 plugin docs:
+  the model-facing description belongs in `schema["description"]`; the
+  `register_tool(description=...)` value is ToolEntry registry metadata only and is NOT
+  copied back into a schema that lacks one. Our `TOOL_SPECS` pass `description=` while
+  the schemas carry none — the model likely sees our 7 tools undescribed. Keep
+  `ToolSpec.description` as the single source of truth and inject it into the schema at
+  registration time in `register_tools` (no duplication; dispatch unchanged).
+  Tests: `tests/unit/test_hermes_plugin.py` — every FakeCtx registration carries
+  `schema["description"]` equal to `TOOL_SPECS[name]["description"]`; payload fields
+  unchanged.
+
+- [ ] **T1.9 Pin bump: `HERMES_REF` → v2026.8.31 (Hermes v0.21.0)** — resolve the release
+  tag to its commit SHA (refs/tags → tag object → commit); move BOTH `docker/HERMES_REF`
+  and the `docker-compose.yml` build URL; refresh `docker/README.md`'s current-pin note
+  and `tests/unit/test_plugin_manifest.py`'s census comment (upstream census is now
+  v1+v2; our manifest fields remain valid). Evaluation basis: Notes log 2026-09-02 —
+  no breaking changes on gateway/cron/Telegram/plugin surfaces. Manual follow-up on the
+  Pi (human): `docker compose build && docker compose up -d`, then the abbreviated gate
+  (plugin tools in a DM, one `hermes cron run`, kanban reachable) — procedure per
+  `docker/README.md`.
+  Tests: `tests/test_compose.py` drift guard (pin file == build URL) stays green.
+
 ## Phase 2 — Knowledge
 
 - [ ] **T2.1 `scripts/sync.sh`** — bisync wrapper: logs to `data/logs/sync.log`, boot mode
@@ -477,3 +517,21 @@ Pi/human; the agent only produces/refreshes the verification script.
   fake-member greetings within ~1 min; one real unattended fire (checkin-1 @ 04:30 UTC =
   Juan's 06:30 Berlin wake) delivered; fake rows cleaned; roster pristine;
   AGENTS.md regen cycle proven across new sessions. Phase-1 exit criteria met.
+- 2026-09-02 upstream evaluation (user-directed) — Hermes v0.21.0 (v2026.8.31,
+  "Pantheon") released Aug 31; our pin v2026.8.27 (= v0.20.6) predates it by 911 commits
+  (the release rolls up and documents the v0.20.1–v0.20.6 windows we already have, so the
+  real delta is Aug 27→31). Full audit against the release notes + docs + plugin/cron/
+  registry sources at the new tag: NO breaking changes on the surfaces we run — gateway
+  compose shape (host networking, HERMES_UID/GID, ~/.hermes:/opt/data), cronjob tool with
+  name-based edit, cron.model pin + fail-closed drift guard, cron-runs-cannot-manage-cron
+  default, workdir= detachment, Telegram allowlists (all three vars), admin-bot privacy
+  workaround, SOUL.md/AGENTS.md wiring, manifest census (our fields stay known; census
+  gained v2 fields), register_tool signature. Notable findings: (1) user plugins are
+  OPT-IN via plugins.enabled with upgrade grandfathering — the live Pi is covered, fresh
+  clones are not (→ T1.7); (2) schema["description"] is the model-facing description,
+  register_tool(description=...) is not copied into schemas lacking it (→ T1.8);
+  (3) cron gained `cron doctor`, last_fire_error surfacing, continuity=true, per-job
+  reasoning pins, and `cron.allow_agent_scheduling` (opt-in scheduled cron management —
+  a future design decision for the DST recompute per proposal §6.4; deliberately NOT
+  enabled now, reconciler stays prompt-not-process). Queued T1.7–T1.9 (Phase 1
+  follow-ups) by owner direction ("full sequence": prep tasks, then pin bump).
