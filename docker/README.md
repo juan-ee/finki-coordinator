@@ -34,9 +34,10 @@ tags move) of <https://github.com/NousResearch/hermes-agent>.
 4. On the Pi: `docker compose build && docker compose up -d`, then verify the
    bot comes back (Telegram DM) before moving on.
 
-**Current pin:** `5fc308a70719a83cccdbba4c0e39c23f5a8239d5` — the commit that
-release tag `v2026.8.27` points to, recorded 2026-08-29 (verified via the
-GitHub API: refs/tags → tag object → commit).
+**Current pin:** `29112bef099274229cadff79cdff7bf7b99c4b77` — the commit that
+release tag `v2026.8.31` (Hermes v0.21.0) points to, recorded 2026-09-02 (verified via
+the GitHub API: refs/tags → tag object → commit). Prior pin: `5fc308a7…` = `v2026.8.27`
+(v0.20.6), the commit the phase-1 gate ran against.
 
 ## The Pi build (slow, one-time)
 

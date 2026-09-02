@@ -13,7 +13,7 @@
 services:
   gateway:
     # Git-URL build context at the pinned ref (docker/HERMES_REF — keep in sync).
-    build: https://github.com/NousResearch/hermes-agent.git#5fc308a70719a83cccdbba4c0e39c23f5a8239d5
+    build: https://github.com/NousResearch/hermes-agent.git#29112bef099274229cadff79cdff7bf7b99c4b77
     image: hermes-agent
     container_name: hermes
     restart: unless-stopped

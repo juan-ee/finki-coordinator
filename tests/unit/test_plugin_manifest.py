@@ -5,11 +5,12 @@ directory plugin only when (a) plugin.yaml parses beside an __init__.py, (b) the
 module exposes register(ctx) callable with a single positional argument, and (c) the
 plugin id is listed in config.yaml plugins.enabled. (a)+(b) are pinned here so the
 2026-09-01 gate blocker (discovery silently skipping src/coordinator) cannot regress;
-(c) is runtime config on the Pi and is covered by docs/verify/phase1.md.
+(c) is applied by scripts/setup.sh step 6 and exercised on the Pi by docs/verify/phase1.md.
 
-The MANIFEST_SCHEMA mirrors the upstream v1 known-field census (_KNOWN_MANIFEST_FIELDS):
-every field we ship must be understood by the pinned parser, and provides_tools must
-match TOOL_SPECS exactly, so hermes plugins list can never disagree with the registry.
+The MANIFEST_SCHEMA mirrors the upstream known-field census (_KNOWN_MANIFEST_FIELDS —
+now v1+v2 at the pinned ref): every field we ship must be understood by the pinned
+parser, and provides_tools must match TOOL_SPECS exactly, so hermes plugins list can
+never disagree with the registry.
 """
 
 import inspect
