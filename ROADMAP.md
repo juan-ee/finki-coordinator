@@ -220,7 +220,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   `RCLONE_ROOT_FOLDER_ID` from env. Tests: `tests/test_sync_smoke.py` — `bash -n`;
   dry-run without env vars exits non-zero with actionable message.
 
-- [ ] **T2.2 `DOC` — `templates/`** — `brief.md` (mission/goals/success criteria/
+- [x] **T2.2 `DOC` — `templates/`** — `brief.md` (mission/goals/success criteria/
   constraints), `adr.md` (context/decision/consequences), `meeting-notes.md`,
   `proposal.md`.
 
