@@ -165,11 +165,13 @@ Pi/human; the agent only produces/refreshes the verification script.
   returns 4 → set digest settings → assert `cron_relay` schedule strings for Guayaquil and
   Berlin members at a winter instant and a summer instant.
 
-- [ ] **T1.6 `DOC` `MANUAL-GATE` — `docs/verify/phase1.md`** — Pi verification script:
+- [x] **T1.6 `DOC` `MANUAL-GATE` — `docs/verify/phase1.md`** — Pi verification script:
   ARM64 build succeeds (record duration); plugin tools visible in a DM session;
   kanban board reachable; timezone matrix (two fake members, `cronjob trigger`, verify
   delivery in expected window); `cron.model` pin visible on jobs; AGENTS.md injected
   (ask the bot for its query map). Leave unchecked for the human.
+  *(2026-09-02: gate executed to Sign-off — steps 2-9 ticked with evidence, deviations
+  recorded in the gate doc and Notes log; operator signature in phase1.md.)*
 
 ## Phase 2 — Knowledge
 
@@ -440,3 +442,38 @@ Pi/human; the agent only produces/refreshes the verification script.
   the paused job (row stays inactive) — documented relay-precedence behavior; (4)
   DatabaseError rebasing to sqlite3.Error subclass keeps init_db/generate_agents_md
   except-clauses working.
+- 2026-09-02 Phase-1 gate COMPLETED (steps 2-9 + Sign-off; T1.6 ticked) — resolution of
+  the 2026-09-01 pause. Fix rounds (each TDD + two-axis fresh review + delta re-review;
+  0 hard violations after arbitration): (1) cacd1b9 — plugin.yaml (v1 census fields,
+  provides_tools == TOOL_SPECS) + package-level register(ctx) single-positional
+  entrypoint wiring wire_runtime/SystemClock/default_db_path + intra-package imports made
+  relative (upstream loads the dir as hermes_plugins.coordinator; absolute self-imports
+  fail in-container); (2) 6b1e6ff — host dispatch contract: upstream invokes
+  entry.handler(args, task_id/session_id/user_task) and _normalize_handler_result accepts
+  str results only, so _bind takes **_host (ignored) and json.dumps at the boundary
+  (handlers keep the dict contract); (3) de01106 — sqlite3 check_same_thread=False
+  (gateway calls handlers from worker threads; serialized mode threadsafety==3 verified
+  live on host+container; busy_timeout covers cross-process). The spec axis also caught a
+  wrong runtime DB path (extra data/ segment vs the ./data:/opt/data/workspace mount)
+  fixed in c76b8de BEFORE first deploy. Arbitrated judgement calls: SystemClock keeps the
+  single datetime.now in src/ (rule-5 literal vs rule-3 adapter sanction — the injection
+  root; recorded, user surfaced at sign-off); json.dumps default=str stringifies leaked
+  types silently (explicit-serialization refactor candidate); Callable[..., str]
+  loosens the HermesContext handler type (host's real signature is dynamic); real
+  telegram_id committed in members.seed.yaml (identifier, not credential — owner
+  directed). Owner-directed founder roster 626bf81 (telegram_id null tolerated by
+  init_db). Gate runtime findings: plugins.enabled + top-level toolsets (kanban) are
+  RUNTIME config, applied manually — setup.sh follow-up queued (a stranger clone would
+  hit both gaps); kanban tools ship inside the hermes-telegram composite gated by the
+  _check_kanban_mode check_fn (top-level toolsets flag); bot-authored workaround skill
+  removed after the fixes (it encoded direct-DB bypasses); self-model incident — an
+  owner-approved switch to google/gemini-3.6-flash broke the DM provider mid-gate,
+  operator reverted + corrected the bot's memory + persona amended (d6e610e:
+  verify-before-claiming + sanctioned valve flow; retest refused cleanly); doc
+  corrections: `hermes cron trigger` -> `hermes cron run`, per-job model column ->
+  fleet-inherit + fail-closed drift guard (cron/jobs.py:1771), cronjob relay evidence
+  lives in /opt/data/logs/agent.log (tool_executor), not compose stdout; setup.sh bare
+  `python` needs the repo venv on PATH (T0.13 known). Evidence: fire test delivered both
+  fake-member greetings within ~1 min; one real unattended fire (checkin-1 @ 04:30 UTC =
+  Juan's 06:30 Berlin wake) delivered; fake rows cleaned; roster pristine;
+  AGENTS.md regen cycle proven across new sessions. Phase-1 exit criteria met.
