@@ -175,7 +175,7 @@ Pi/human; the agent only produces/refreshes the verification script.
 
 ### Phase 1 follow-ups — upstream v0.21.0 alignment (queued 2026-09-02, owner direction)
 
-- [ ] **T1.7 `scripts/setup.sh` applies the plugin + toolsets runtime config** — new
+- [x] **T1.7 `scripts/setup.sh` applies the plugin + toolsets runtime config** — new
   step 6: `hermes config set plugins.enabled '["coordinator"]'` and
   `hermes config set toolsets '["hermes-cli", "kanban"]'` — via the `hermes` CLI when
   present, otherwise the printed in-container fallback (same pattern as step 5; renumber
@@ -191,7 +191,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   because the plugin dir only materializes inside the container's mount namespace; the
   value re-asserts the template baseline on idempotent re-runs.
 
-- [ ] **T1.8 Tool descriptions ride in the JSON schema** — upstream v0.21.0 plugin docs:
+- [x] **T1.8 Tool descriptions ride in the JSON schema** — upstream v0.21.0 plugin docs:
   the model-facing description belongs in `schema["description"]`; the
   `register_tool(description=...)` value is ToolEntry registry metadata only and is NOT
   copied back into a schema that lacks one. Our `TOOL_SPECS` pass `description=` while
@@ -202,7 +202,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   `schema["description"]` equal to `TOOL_SPECS[name]["description"]`; payload fields
   unchanged.
 
-- [ ] **T1.9 Pin bump: `HERMES_REF` → v2026.8.31 (Hermes v0.21.0)** — resolve the release
+- [x] **T1.9 Pin bump: `HERMES_REF` → v2026.8.31 (Hermes v0.21.0)** — resolve the release
   tag to its commit SHA (refs/tags → tag object → commit); move BOTH `docker/HERMES_REF`
   and the `docker-compose.yml` build URL; refresh `docker/README.md`'s current-pin note
   and `tests/unit/test_plugin_manifest.py`'s census comment (upstream census is now
@@ -535,3 +535,21 @@ Pi/human; the agent only produces/refreshes the verification script.
   a future design decision for the DST recompute per proposal §6.4; deliberately NOT
   enabled now, reconciler stays prompt-not-process). Queued T1.7–T1.9 (Phase 1
   follow-ups) by owner direction ("full sequence": prep tasks, then pin bump).
+- 2026-09-02 T1.7 — review verdict: no hard violations (two fresh axes, fixed point
+  c26c8b2); fix round 9a98dc9: shell-quoted printed config values (bash-glob safety for
+  copy-paste) + extracted the shared print_in_container_fallback block (duplication
+  finding); delta re-reviewed FIXED, escaping traced byte-exact. Judgement calls: the
+  config-set values re-assert the template baseline on re-run (clobber-by-design for the
+  two template-owned keys, documented in the task Notes); the fallback's restart line
+  goes beyond the two named commands (operational necessity when applied post-first-boot).
+- 2026-09-02 T1.8 — review verdict: no hard violations; BOTH axes independently flagged
+  the spread order (a future schema-level "description" could shadow the declared single
+  source) — fixed in 9a657f9 ({**spec["schema"], "description": ...}), delta re-reviewed
+  FIXED. register_tool(description=...) kept alongside the schema copy — both derive from
+  the one ToolSpec field, synchronized by construction.
+- 2026-09-02 T1.9 — pin resolved v2026.8.31 → tag object 6e8f8418 → commit 29112bef
+  (GitHub API; tagger 2026-08-31T19:29:39Z); the drift-guard test validated the rendered
+  `docker compose config` locally. Review finding "nothing enforces compose-URL ==
+  HERMES_REF" DISMISSED with evidence: tests/test_compose.py asserts exactly that and
+  ran green on the new SHA. Manual Pi steps (rebuild + abbreviated gate) remain for the
+  operator per docker/README.md.
