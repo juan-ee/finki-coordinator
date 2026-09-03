@@ -26,12 +26,36 @@
 #                           (non-secret per proposal §2; printed in --dry-run only,
 #                           never written to the log)
 #
+# .env fallback: when RCLONE_REMOTE / RCLONE_ROOT_FOLDER_ID are not exported, they are
+# read from $REPO_ROOT/.env if that file exists — host-side callers (the cadence cron,
+# boot wiring) run without an exported environment. Exported values win over the file;
+# only these two keys are read here (secrets in .env are never read, printed, or logged).
+#
 # Log: data/logs/sync.log - created/appended at runtime only (data/ is gitignored).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCAL_ROOT="$REPO_ROOT/data/project"
 LOG_FILE="$REPO_ROOT/data/logs/sync.log"
+
+# .env fallback (host cron / boot callers run with no exported env): read only the two
+# keys this script consumes, only when the variable is not set at all — an explicitly
+# exported variable (even empty) wins over the file. First occurrence of a key wins;
+# values are used verbatim apart from stripping inline comments and trailing
+# whitespace, so the shipped .env.example lines (which carry trailing comments) parse
+# correctly. The grep probe scopes the no-match rc=1 to a plain skip; a real grep
+# error (rc=2, e.g. unreadable file) still prints and falls through to validation,
+# which names the variable to set.
+_envfile="$REPO_ROOT/.env"
+if [[ -f "$_envfile" ]]; then
+  if [[ -z "${RCLONE_REMOTE+x}" ]] && grep -qE '^RCLONE_REMOTE=' "$_envfile"; then
+    RCLONE_REMOTE="$(grep -m1 -E '^RCLONE_REMOTE=' "$_envfile" | cut -d= -f2- | sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]+$//')"
+  fi
+  if [[ -z "${RCLONE_ROOT_FOLDER_ID+x}" ]] && grep -qE '^RCLONE_ROOT_FOLDER_ID=' "$_envfile"; then
+    RCLONE_ROOT_FOLDER_ID="$(grep -m1 -E '^RCLONE_ROOT_FOLDER_ID=' "$_envfile" | cut -d= -f2- | sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]+$//')"
+  fi
+fi
+unset _envfile
 
 DRY_RUN=0
 BOOT_MODE=0
@@ -50,6 +74,8 @@ usage: scripts/sync.sh [--dry-run] [--boot] [--resync --i-know-what-im-doing]
 environment (see .env.example):
   RCLONE_REMOTE             required: rclone remote NAME, e.g. "shareddrive:"
   RCLONE_ROOT_FOLDER_ID     optional: pin sync to a specific Drive folder id
+
+  unset values fall back to ./.env in the repo root when that file exists (exported env wins)
 
 log: data/logs/sync.log
 USAGE_EOF
