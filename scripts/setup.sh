@@ -38,6 +38,10 @@ RCLONE_CONF_PATH="${RCLONE_CONFIG_PATH:-$HOME/.config/rclone/rclone.conf}"
 HERMES_HOME_DIR="${HERMES_HOME:-$HOME/.hermes}"
 HERMES_MODEL_VALUE="${HERMES_MODEL:-nousresearch/hermes-4-70b}"
 RCLONE_REMOTE_VALUE="${RCLONE_REMOTE:-shareddrive:}"
+# The conf section is the remote NAME: callers address the remote as "$RCLONE_REMOTE"
+# (= "name:"), and rclone's config section is "[name]" — the trailing colon must never
+# enter the section header ([shareddrive:] was unaddressable; phase-2 gate finding).
+RCLONE_REMOTE_NAME="${RCLONE_REMOTE_VALUE%:}"
 
 REQUIRED_KEYS=(
   TELEGRAM_BOT_TOKEN
@@ -105,7 +109,7 @@ step_write_rclone_conf() {
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "  WOULD write: $RCLONE_CONF_PATH"
     echo "  stanza shape (env-derived values redacted):"
-    echo "    [$RCLONE_REMOTE_VALUE]"
+    echo "    [$RCLONE_REMOTE_NAME]"
     echo "    type = drive"
     echo "    client_id = <redacted:GOOGLE_DRIVE_CLIENT_ID>"
     echo "    client_secret = <redacted:GOOGLE_DRIVE_CLIENT_SECRET>"
@@ -121,7 +125,7 @@ step_write_rclone_conf() {
   (
     umask 077
     cat > "$RCLONE_CONF_PATH" <<RCLONE_EOF
-[$RCLONE_REMOTE_VALUE]
+[$RCLONE_REMOTE_NAME]
 type = drive
 client_id = $GOOGLE_DRIVE_CLIENT_ID
 client_secret = $GOOGLE_DRIVE_CLIENT_SECRET

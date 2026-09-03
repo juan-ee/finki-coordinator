@@ -113,13 +113,18 @@ def test_dry_run_exits_zero_writes_nothing_and_leaks_no_secrets(tmp_path: Path) 
     assert "WOULD copy: docs/index.md" in stdout
     assert "WOULD copy: inbox/.gitkeep" in stdout
     assert "exists (keep):" not in stdout
+    # The dry-run stanza pins the conf section shape: the remote NAME without the
+    # trailing colon ([shareddrive]) — setup.sh's other write site for the section.
+    assert "    [shareddrive]" in stdout
 
     for value in SECRET_VALUES:
         assert value not in stdout + proc.stderr, "dry-run echoed a secret value"
 
 
 def _real_mode_env(tmp_path: Path) -> dict[str, str]:
-    """Fixture env for a real (non-dry) run with every write target under tmp_path."""
+    """Fixture env for a real run: every write target under tmp_path, valid config.yaml."""
+    # The committed example validates against the schema, so step 2 passes with it.
+    shutil.copyfile(REPO_ROOT / "config" / "config.example.yaml", tmp_path / "config.yaml")
     return {
         # Prepend the running interpreter's bin dir so bare `python` in the script
         # resolves to the project venv (coordinator importable) on any host.
@@ -137,8 +142,6 @@ def _real_mode_env(tmp_path: Path) -> dict[str, str]:
 def test_real_mode_seeds_project_template_without_overwriting(tmp_path: Path) -> None:
     """Real mode seeds project-template/ once; existing files are never overwritten."""
     project = tmp_path / "data" / "project"
-    # The committed example validates against the schema, so step 2 passes with it.
-    shutil.copyfile(REPO_ROOT / "config" / "config.example.yaml", tmp_path / "config.yaml")
     # Operator content that must survive the seed (the never-overwrite guarantee).
     project.mkdir(parents=True)
     (project / "README.md").write_text("# custom operator content\n", encoding="utf-8")
@@ -184,3 +187,25 @@ def test_real_mode_seeds_project_template_without_overwriting(tmp_path: Path) ->
     assert after["docs/index.md"] == "# edited by the team\n"
     del after["docs/index.md"]
     assert after == before
+
+
+def test_real_mode_writes_conf_section_without_trailing_colon(tmp_path: Path) -> None:
+    """Real mode writes the conf section as the remote NAME (trailing colon stripped)."""
+    # rclone addresses the remote as "$RCLONE_REMOTE" (= "name:"), and the config file
+    # section is "[name]" — writing "[shareddrive:]" made the remote unaddressable
+    # (phase-2 gate finding: rclone "didn't find section in config file").
+    env = _real_mode_env(tmp_path)
+
+    proc = subprocess.run(
+        ["bash", str(SETUP_SH)],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        env=env,
+        check=False,
+    )
+
+    assert proc.returncode == 0, f"real run failed:\n{proc.stdout}\n{proc.stderr}"
+    conf = tmp_path / "home" / ".config" / "rclone" / "rclone.conf"
+    first_line = conf.read_text(encoding="utf-8").splitlines()[0]
+    assert first_line == "[shareddrive]", f"bad conf section: {first_line!r}"
