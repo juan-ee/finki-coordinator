@@ -11,19 +11,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SETUP_SH = REPO_ROOT / "scripts" / "setup.sh"
 
 # Dummy fixture values — deliberately fake; the script must never echo them back.
+# T2.12: no Drive/rclone env vars exist anymore — Drive access is $GAPI, in-container.
 REQUIRED_ENV: dict[str, str] = {
     "TELEGRAM_BOT_TOKEN": "test-telegram-token",
     "OPENROUTER_API_KEY": "test-openrouter-key",
-    "GOOGLE_DRIVE_CLIENT_ID": "test-client-id",
-    "GOOGLE_DRIVE_CLIENT_SECRET": "test-client-secret",
-    "GOOGLE_DRIVE_REFRESH_TOKEN": "test-refresh-token",
 }
-OPTIONAL_ENV: dict[str, str] = {
-    "RCLONE_REMOTE": "shareddrive:",
-    "RCLONE_ROOT_FOLDER_ID": "test-root-folder-id",
-}
-# RCLONE_REMOTE is a remote NAME (not a credential) and may appear in planned output.
-SECRET_VALUES = (*REQUIRED_ENV.values(), OPTIONAL_ENV["RCLONE_ROOT_FOLDER_ID"])
+SECRET_VALUES = tuple(REQUIRED_ENV.values())
 
 
 def _snapshot(*roots: Path) -> list[tuple[str, int]]:
@@ -65,7 +58,6 @@ def test_dry_run_exits_zero_writes_nothing_and_leaks_no_secrets(tmp_path: Path) 
         # Fresh seed target -> the dry-run plan is deterministic (all WOULD copy).
         "PROJECT_DATA_ROOT": str(tmp_path / "data"),
         **REQUIRED_ENV,
-        **OPTIONAL_ENV,
     }
 
     before = _snapshot(tmp_path)
@@ -85,8 +77,7 @@ def test_dry_run_exits_zero_writes_nothing_and_leaks_no_secrets(tmp_path: Path) 
     assert before == after, f"dry-run wrote under tmp roots: {sorted(set(after) - set(before))}"
 
     stdout = proc.stdout
-    assert "rclone.conf" in stdout
-    assert str(home / ".config" / "rclone" / "rclone.conf") in stdout
+    assert "rclone" not in stdout.lower(), "setup.sh still plans an rclone step"
     assert str(hermes_home / "SOUL.md") in stdout
     assert "hermes config set model" in stdout
     assert "hermes config set cron.model" in stdout
@@ -113,9 +104,6 @@ def test_dry_run_exits_zero_writes_nothing_and_leaks_no_secrets(tmp_path: Path) 
     assert "WOULD copy: docs/index.md" in stdout
     assert "WOULD copy: inbox/.gitkeep" in stdout
     assert "exists (keep):" not in stdout
-    # The dry-run stanza pins the conf section shape: the remote NAME without the
-    # trailing colon ([shareddrive]) — setup.sh's other write site for the section.
-    assert "    [shareddrive]" in stdout
 
     for value in SECRET_VALUES:
         assert value not in stdout + proc.stderr, "dry-run echoed a secret value"
@@ -135,7 +123,6 @@ def _real_mode_env(tmp_path: Path) -> dict[str, str]:
         "CONFIG_YAML": str(tmp_path / "config.yaml"),
         "CONFIG_SCHEMA": str(REPO_ROOT / "config" / "config.schema.json"),
         **REQUIRED_ENV,
-        **OPTIONAL_ENV,
     }
 
 
@@ -187,25 +174,3 @@ def test_real_mode_seeds_project_template_without_overwriting(tmp_path: Path) ->
     assert after["docs/index.md"] == "# edited by the team\n"
     del after["docs/index.md"]
     assert after == before
-
-
-def test_real_mode_writes_conf_section_without_trailing_colon(tmp_path: Path) -> None:
-    """Real mode writes the conf section as the remote NAME (trailing colon stripped)."""
-    # rclone addresses the remote as "$RCLONE_REMOTE" (= "name:"), and the config file
-    # section is "[name]" — writing "[shareddrive:]" made the remote unaddressable
-    # (phase-2 gate finding: rclone "didn't find section in config file").
-    env = _real_mode_env(tmp_path)
-
-    proc = subprocess.run(
-        ["bash", str(SETUP_SH)],
-        capture_output=True,
-        text=True,
-        cwd=REPO_ROOT,
-        env=env,
-        check=False,
-    )
-
-    assert proc.returncode == 0, f"real run failed:\n{proc.stdout}\n{proc.stderr}"
-    conf = tmp_path / "home" / ".config" / "rclone" / "rclone.conf"
-    first_line = conf.read_text(encoding="utf-8").splitlines()[0]
-    assert first_line == "[shareddrive]", f"bad conf section: {first_line!r}"

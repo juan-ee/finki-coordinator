@@ -12,13 +12,15 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 HERMES_REF_FILE = REPO_ROOT / "docker" / "HERMES_REF"
 
-# Every variable docker-compose.yml passes through to the container. These are
-# scrubbed from the subprocess environment so a developer's exported secrets can
-# never leak into the rendered config (and therefore into this test's output).
+# Every variable docker-compose.yml passes through to the container (T2.12 contract:
+# Drive access is skill-managed via $GAPI — no Drive/rclone env vars exist anymore).
+# These are scrubbed from the subprocess environment so a developer's exported secrets
+# can never leak into the rendered config (and therefore into this test's output).
 PASSTHROUGH_VARS = frozenset(
     {
         "TELEGRAM_BOT_TOKEN",
@@ -26,6 +28,13 @@ PASSTHROUGH_VARS = frozenset(
         "TELEGRAM_GROUP_ALLOWED_CHATS",
         "TELEGRAM_GROUP_ALLOWED_USERS",
         "OPENROUTER_API_KEY",
+    }
+)
+
+# Legacy v5 Drive/rclone variable NAMES: nothing interpolates them anymore, but a
+# developer who still exports them must not see them leak into any rendered output.
+LEGACY_DRIVE_VARS = frozenset(
+    {
         "GOOGLE_DRIVE_CLIENT_ID",
         "GOOGLE_DRIVE_CLIENT_SECRET",
         "GOOGLE_DRIVE_REFRESH_TOKEN",
@@ -41,7 +50,8 @@ pytestmark = pytest.mark.skipif(docker_missing, reason="docker CLI not available
 
 def _render_config() -> subprocess.CompletedProcess[str]:
     """Render `docker compose config` from the repo root, offline and secret-free."""
-    env = {k: v for k, v in os.environ.items() if k not in PASSTHROUGH_VARS}
+    scrub = PASSTHROUGH_VARS | LEGACY_DRIVE_VARS
+    env = {k: v for k, v in os.environ.items() if k not in scrub}
     # --env-file /dev/null: a developer's local .env must never be interpolated
     # into the rendered output — secrets stay null and the render is deterministic.
     return subprocess.run(
@@ -59,6 +69,22 @@ def test_compose_config_exits_zero() -> None:
     proc = _render_config()
 
     assert proc.returncode == 0, f"compose config failed:\n{proc.stderr}"
+
+
+def test_environment_keys_match_the_passthrough_contract() -> None:
+    """Env set-equality drift guard (T2.12): the rendered environment keys are exactly
+    TZ + HERMES_UID/GID + PASSTHROUGH_VARS — no var can silently appear or vanish."""
+    proc = _render_config()
+
+    assert proc.returncode == 0, proc.stderr
+    config = yaml.safe_load(proc.stdout)
+    environment = config["services"]["gateway"]["environment"] or {}
+    rendered = set(environment.keys())
+    expected = {"TZ", "HERMES_UID", "HERMES_GID"} | set(PASSTHROUGH_VARS)
+    assert rendered == expected, (
+        f"unexpected env keys: {sorted(rendered - expected)}; "
+        f"missing: {sorted(expected - rendered)}"
+    )
 
 
 def test_hermes_ref_appears_in_rendered_config() -> None:

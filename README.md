@@ -61,7 +61,8 @@ plugin, never per job.
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather)) + your numeric user ID.
 - An [OpenRouter](https://openrouter.ai/keys) API key **with a per-key credit limit** —
   that limit is the money valve.
-- Google Drive OAuth client (Desktop type) + refresh token, for the knowledge base.
+- A Google account that can reach the team's Shared Drive folder — the agent connects
+  in-container via Hermes' built-in google-workspace skill ($GAPI); no local OAuth files.
 - [`uv`](https://docs.astral.sh/uv/) — runs the host-side setup scripts and the dev suite.
 
 ## Quickstart
@@ -72,8 +73,8 @@ cd finki-coordinator
 ```
 
 1. **Secrets** — `cp .env.example .env` and fill it: `TELEGRAM_BOT_TOKEN`,
-   `TELEGRAM_ALLOWED_USERS` (comma-separated numeric Telegram IDs), `OPENROUTER_API_KEY`,
-   the `GOOGLE_DRIVE_*` OAuth trio, `RCLONE_REMOTE`. On the Pi set `HERMES_UID` /
+   `TELEGRAM_ALLOWED_USERS` (comma-separated numeric Telegram IDs), `OPENROUTER_API_KEY`.
+   On the Pi set `HERMES_UID` /
    `HERMES_GID` to your `id -u` / `id -g`. Never commit `.env`. To onboard a member
    later, run `scripts/allow.sh <id>...` — it appends their ID and applies with
    `docker compose up -d` (never edit the gate by hand and restart; proposal §8.2).
@@ -85,10 +86,10 @@ cd finki-coordinator
    hygiene); they enter via `scripts/allow.sh <id>...` (the gitignored `.env` door)
    and the door-first onboarding flow (proposal §8.2). A pre-known founding roster
    with real IDs belongs in a gitignored local seed file passed via `--seed`.
-4. **Setup** — `uv sync`, then `uv run ./scripts/setup.sh`: validates the config, writes
-   `~/.config/rclone/rclone.conf` (0600), installs `prompts/persona.md` →
+4. **Setup** — `uv sync`, then `uv run ./scripts/setup.sh`: validates the config,
+   installs `prompts/persona.md` →
    `~/.hermes/SOUL.md`, and applies the Hermes config (model + `cron.model` pin +
-   `timezone UTC`). If the `hermes` CLI is absent on the host it prints the three
+   `timezone UTC`). If the `hermes` CLI is absent on the host it prints the
    `hermes config set …` commands — run them inside the container after first boot, e.g.
    `docker compose exec gateway hermes config set cron.model <model>`.
 5. **Database** — `uv run python scripts/init_db.py --db data/hermes/hermes-coord.db

@@ -4,27 +4,24 @@
 # Pure orchestration (AGENTS.md rule 3): checks env-key presence, delegates config
 # validation to 'python -m coordinator.config validate' (T0.4), and writes/installs
 # files. No validation logic is reimplemented here. Secret VALUES are never printed -
-# key NAMES and set/missing status only (AGENTS.md rule 7); rclone.conf receives the
-# values by file write.
+# key NAMES and set/missing status only (AGENTS.md rule 7).
 #
 # Usage: scripts/setup.sh [--dry-run]
 #
 # Steps:
-#   1/7 check required env keys (TELEGRAM_BOT_TOKEN, OPENROUTER_API_KEY,
-#       GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET, GOOGLE_DRIVE_REFRESH_TOKEN)
-#   2/7 validate config/config.yaml via 'python -m coordinator.config validate'
-#   3/7 write rclone.conf from env (remote, client id/secret, refresh token, root folder)
-#   4/7 install prompts/persona.md -> ${HERMES_HOME:-$HOME/.hermes}/SOUL.md
-#   5/7 apply Hermes config: model + cron.model pin + timezone UTC ('hermes config set',
+#   1/6 check required env keys (TELEGRAM_BOT_TOKEN, OPENROUTER_API_KEY)
+#   2/6 validate config/config.yaml via 'python -m coordinator.config validate'
+#   3/6 install prompts/persona.md -> ${HERMES_HOME:-$HOME/.hermes}/SOUL.md
+#   4/6 apply Hermes config: model + cron.model pin + timezone UTC ('hermes config set',
 #       with a printed manual fallback when the CLI is absent)
-#   6/7 enable the coordinator plugin + kanban toolset (plugins.enabled / top-level
+#   5/6 enable the coordinator plugin + kanban toolset (plugins.enabled / top-level
 #       toolsets — upstream opt-in gates; printed in-container fallback when the CLI
 #       is absent, since the plugin dir only materializes inside the container)
-#   7/7 seed data/project/ from project-template/ (first-boot files; existing files
+#   6/6 seed data/project/ from project-template/ (first-boot files; existing files
 #       are never overwritten)
 #
 # Overridable env knobs (defaults keep production behavior; overrides exist for
-# testability and relocated installs): RCLONE_CONFIG_PATH, HERMES_HOME, HERMES_MODEL,
+# testability and relocated installs): HERMES_HOME, HERMES_MODEL,
 # PROJECT_DATA_ROOT (seed target root, default $REPO_ROOT/data), CONFIG_YAML and
 # CONFIG_SCHEMA (validation inputs).
 set -euo pipefail
@@ -34,21 +31,12 @@ CONFIG_YAML="${CONFIG_YAML:-$REPO_ROOT/config/config.yaml}"
 CONFIG_SCHEMA="${CONFIG_SCHEMA:-$REPO_ROOT/config/config.schema.json}"
 PROJECT_DATA_ROOT="${PROJECT_DATA_ROOT:-$REPO_ROOT/data}"
 PERSONA_SRC="$REPO_ROOT/prompts/persona.md"
-RCLONE_CONF_PATH="${RCLONE_CONFIG_PATH:-$HOME/.config/rclone/rclone.conf}"
 HERMES_HOME_DIR="${HERMES_HOME:-$HOME/.hermes}"
 HERMES_MODEL_VALUE="${HERMES_MODEL:-nousresearch/hermes-4-70b}"
-RCLONE_REMOTE_VALUE="${RCLONE_REMOTE:-shareddrive:}"
-# The conf section is the remote NAME: callers address the remote as "$RCLONE_REMOTE"
-# (= "name:"), and rclone's config section is "[name]" — the trailing colon must never
-# enter the section header ([shareddrive:] was unaddressable; phase-2 gate finding).
-RCLONE_REMOTE_NAME="${RCLONE_REMOTE_VALUE%:}"
 
 REQUIRED_KEYS=(
   TELEGRAM_BOT_TOKEN
   OPENROUTER_API_KEY
-  GOOGLE_DRIVE_CLIENT_ID
-  GOOGLE_DRIVE_CLIENT_SECRET
-  GOOGLE_DRIVE_REFRESH_TOKEN
 )
 
 DRY_RUN=0
@@ -63,7 +51,7 @@ for arg in "$@"; do
 done
 
 step_env_check() {
-  echo "== [1/7] Required env keys (names only; values are never printed) =="
+  echo "== [1/6] Required env keys (names only; values are never printed) =="
   local missing=() key
   for key in "${REQUIRED_KEYS[@]}"; do
     if [[ -n "${!key:-}" ]]; then
@@ -86,7 +74,7 @@ step_env_check() {
 }
 
 step_validate_config() {
-  echo "== [2/7] Validate config/config.yaml (python -m coordinator.config validate) =="
+  echo "== [2/6] Validate config/config.yaml (python -m coordinator.config validate) =="
   if [[ ! -f "$CONFIG_YAML" ]]; then
     if [[ "$DRY_RUN" -eq 1 ]]; then
       echo "  WARNING: $CONFIG_YAML not found (the repo ships config/config.example.yaml only)"
@@ -104,41 +92,8 @@ step_validate_config() {
   (cd "$REPO_ROOT" && python -m coordinator.config validate "$CONFIG_YAML" "$CONFIG_SCHEMA")
 }
 
-step_write_rclone_conf() {
-  echo "== [3/7] rclone.conf (values go into the file, never onto stdout) =="
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "  WOULD write: $RCLONE_CONF_PATH"
-    echo "  stanza shape (env-derived values redacted):"
-    echo "    [$RCLONE_REMOTE_NAME]"
-    echo "    type = drive"
-    echo "    client_id = <redacted:GOOGLE_DRIVE_CLIENT_ID>"
-    echo "    client_secret = <redacted:GOOGLE_DRIVE_CLIENT_SECRET>"
-    echo "    token = <redacted:GOOGLE_DRIVE_REFRESH_TOKEN (embedded as JSON)>"
-    if [[ -n "${RCLONE_ROOT_FOLDER_ID:-}" ]]; then
-      echo "    root_folder_id = <redacted:RCLONE_ROOT_FOLDER_ID>"
-    else
-      echo "    root_folder_id = <empty>"
-    fi
-    return 0
-  fi
-  mkdir -p "$(dirname "$RCLONE_CONF_PATH")"
-  (
-    umask 077
-    cat > "$RCLONE_CONF_PATH" <<RCLONE_EOF
-[$RCLONE_REMOTE_NAME]
-type = drive
-client_id = $GOOGLE_DRIVE_CLIENT_ID
-client_secret = $GOOGLE_DRIVE_CLIENT_SECRET
-token = {"access_token":"","token_type":"bearer","refresh_token":"$GOOGLE_DRIVE_REFRESH_TOKEN"}
-root_folder_id = ${RCLONE_ROOT_FOLDER_ID:-}
-RCLONE_EOF
-  )
-  chmod 600 "$RCLONE_CONF_PATH"
-  echo "  wrote: $RCLONE_CONF_PATH (0600)"
-}
-
 step_install_soul_md() {
-  echo "== [4/7] SOUL.md (persona) =="
+  echo "== [3/6] SOUL.md (persona) =="
   if [[ "$DRY_RUN" -eq 1 ]]; then
     if [[ -f "$PERSONA_SRC" ]]; then
       echo "  WOULD install: $PERSONA_SRC -> $HERMES_HOME_DIR/SOUL.md"
@@ -164,7 +119,7 @@ hermes_set() {
 }
 
 step_apply_hermes_config() {
-  echo "== [5/7] Hermes config (model + cron.model pin + timezone UTC) =="
+  echo "== [4/6] Hermes config (model + cron.model pin + timezone UTC) =="
   local model="$HERMES_MODEL_VALUE"
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "  WOULD run (via the hermes CLI if present; otherwise apply manually):"
@@ -194,7 +149,7 @@ print_in_container_fallback() {
 }
 
 step_enable_plugin_toolsets() {
-  echo "== [6/7] Coordinator plugin + kanban toolset (runtime config) =="
+  echo "== [5/6] Coordinator plugin + kanban toolset (runtime config) =="
   # Upstream gates user plugins behind config.yaml plugins.enabled (opt-in), and the
   # kanban tools' check_fn reads the top-level toolsets list (the all wildcard does NOT
   # enable kanban). Written via 'hermes config set' — a pure config write, so it needs
@@ -217,7 +172,7 @@ step_enable_plugin_toolsets() {
 }
 
 step_seed_project_template() {
-  echo "== [7/7] Seed data/project/ from project-template/ (existing files never overwritten) =="
+  echo "== [6/6] Seed data/project/ from project-template/ (existing files never overwritten) =="
   local template_dir="$REPO_ROOT/project-template"
   local target_root="$PROJECT_DATA_ROOT/project"
   if [[ ! -d "$template_dir" ]]; then
@@ -271,7 +226,6 @@ main() {
   fi
   step_env_check
   step_validate_config
-  step_write_rclone_conf
   step_install_soul_md
   step_apply_hermes_config
   step_enable_plugin_toolsets

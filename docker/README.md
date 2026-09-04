@@ -54,7 +54,7 @@ Later `up`s reuse the build cache; a ref bump rebuilds only changed layers.
 |---|---|---|
 | `~/.hermes` | `/opt/data` | Hermes home: `config.yaml`, `SOUL.md` (installed by `scripts/setup.sh`), profiles, sessions, cron state. Survives image updates. |
 | `./src/coordinator` | `/opt/data/plugins/coordinator` (read-only) | Our coordinator plugin, mounted into the user-plugin directory (upstream: user plugins live under `<HERMES_HOME>/plugins/`). |
-| `./data` | `/opt/data/workspace` | Our runtime state: `data/hermes/hermes-coord.db` (members/checkins/settings DB) and `data/project/` (the rclone-bisynced project mirror). Gitignored; never commit. |
+| `./data` | `/opt/data/workspace` | Our runtime state: `data/hermes/hermes-coord.db` (members/checkins/settings + knowledge cache) and `data/project/` (the agent workspace — AGENTS.md, journal/, inbox/). Gitignored; never commit. |
 
 `docker compose config` is valid while `data/` does not exist yet — bind mounts
 are only materialized at `up`.
@@ -72,8 +72,7 @@ is via Telegram).
   upstream s6 hook remaps the container's `hermes` user so bind-mount files
   stay owned by the host user. On the Pi, set both in `.env` to your own
   `id -u` / `id -g`.
-- **Secrets** — `TELEGRAM_BOT_TOKEN`, `OPENROUTER_API_KEY`, the
-  `GOOGLE_DRIVE_*` keys, `RCLONE_REMOTE`, `RCLONE_ROOT_FOLDER_ID` (and the
+- **Secrets** — `TELEGRAM_BOT_TOKEN`, `OPENROUTER_API_KEY` (and the
   `TELEGRAM_*` scoping vars) are declared as bare list-form environment
   entries. **No values are in this repo**: fill `.env` from `.env.example`
   (never commit it), then make the values visible to compose at runtime:
