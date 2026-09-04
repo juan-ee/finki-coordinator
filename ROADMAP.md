@@ -276,7 +276,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   Docs in the same commit: `.env.example` pointer, README quickstart note,
   docker-compose `TELEGRAM_ALLOWED_USERS` comment.
 
-- [ ] **T2.8 — `member_add` rework (D1)** — `telegram_id` REQUIRED end to end:
+- [x] **T2.8 — `member_add` rework (D1)** — `telegram_id` REQUIRED end to end:
   `handlers.member_add` fails without it (actionable summary: take the sender's ID from
   session context); `TOOL_SPECS["member_add"]` schema `required` gains `telegram_id`
   and the description says where it comes from (the door is operator-run via
@@ -827,6 +827,22 @@ Pi/human; the agent only produces/refreshes the verification script.
   (3) ALLOW_ENV_FILE knob mirrors the T0.13/T2.3 testability-knob precedent. Ops
   note: the suite exercises bash 3.2 (macOS) while the Pi runs bash 5 — both now
   covered by the guards.
+- 2026-09-04 T2.8 — review verdict: spec axis 1 HARD (the prescribed description test
+  was missing — reverting the new member_add description kept the suite green);
+  standards axis 0 HARD. ONE fresh fix round 2f94d6a: description-content pin added
+  (red-verified against the pre-T2.8 text — six assertions, all with teeth), row-id
+  assertions strengthened on both duplicate tests, persona "and removals" scope creep
+  reverted (T2.9 will add it when the tool exists); delta re-review: FIXED, no
+  regressions; make check green (275). Judgement calls recorded per rule 8: (1) a
+  duplicate against an INACTIVE row still adds (D1 letter — the NEW row is the only
+  active one; reactivation via member_update is the other path); (2) whitespace-only
+  names remain storable — _require_str rejects only "" and the duplicate matcher trims
+  on compare but never on store (pre-existing gap, newly exercised; tighten only if a
+  real roster ever trips on it); (3) the duplicate-active-name invariant is add-path
+  only — member_update renames can still create what member_add rejects (recorded as
+  a future-need trigger, not built: the add error summary points at member_update, so
+  the gap is user-reachable); (4) casefold matching makes ß↔ss collide (stricter,
+  defensible).
 - 2026-09-04 T2.6 — review verdict: standards axis 2 HARD (the documented local-seed
   path was not actually gitignored — guidance claimed "gitignored" with no rule;
   multi-line test docstring vs rule 6); spec axis PASS with the gitignore gap as a
