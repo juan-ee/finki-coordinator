@@ -1,4 +1,8 @@
-"""Tests for the committed seed file: parses, timezones resolve, wakes well-formed."""
+"""Tests for the committed seed file: parses, timezones resolve, wakes well-formed.
+
+Seed hygiene (v6, D3): the committed seed is a placeholder example — real Telegram
+IDs are never committed; every telegram_id in the file must be None.
+"""
 
 import re
 from pathlib import Path
@@ -41,10 +45,16 @@ def test_wakes_match_the_strict_hhmm_pattern() -> None:
     assert sorted(wakes) == ["05:30", "06:00", "06:30", "11:00"]
 
 
-def test_telegram_ids_are_null_or_integer() -> None:
-    """telegram_id is optional: null (not yet onboarded) or an int (init_db contract)."""
+def test_telegram_ids_are_placeholders() -> None:
+    """Seed hygiene (D3): every committed telegram_id is None — real IDs never committed.
+
+    Real Telegram IDs enter the system through scripts/allow.sh (the .env door) and
+    member_add/member_update (session context), never through this file. A pre-known
+    founding roster with real IDs belongs in a gitignored local seed file instead.
+    """
     for member in _members():
         telegram_id = member.get("telegram_id")
-        assert telegram_id is None or isinstance(telegram_id, int), (
-            f"bad telegram_id: {telegram_id!r}"
+        assert telegram_id is None, (
+            "committed seed must carry placeholder telegram_ids only; found "
+            f"{telegram_id!r} for {member.get('name')!r} — real IDs are never committed"
         )

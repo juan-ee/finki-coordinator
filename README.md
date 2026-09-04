@@ -71,9 +71,12 @@ cd finki-coordinator
    `HERMES_GID` to your `id -u` / `id -g`. Never commit `.env`.
 2. **Config** — `cp config/config.example.yaml config/config.yaml`, then set the project
    name, Shared Drive folder, and the anchor timezone for human-facing times (digest).
-3. **Roster** — edit `config/members.seed.yaml` (names, real Telegram IDs, IANA
-   timezones, local wake times). It seeds the database exactly once, then the DB is
-   authoritative.
+3. **Roster** — edit `config/members.seed.yaml` (names, IANA timezones, local wake
+   times). It seeds the database exactly once, then the DB is authoritative. Keep
+   `telegram_id` values null — real Telegram IDs are never committed (v6 seed
+   hygiene); they enter via `scripts/allow.sh <id>...` (the gitignored `.env` door)
+   and the door-first onboarding flow (proposal §8.2). A pre-known founding roster
+   with real IDs belongs in a gitignored local seed file passed via `--seed`.
 4. **Setup** — `uv sync`, then `uv run ./scripts/setup.sh`: validates the config, writes
    `~/.config/rclone/rclone.conf` (0600), installs `prompts/persona.md` →
    `~/.hermes/SOUL.md`, and applies the Hermes config (model + `cron.model` pin +

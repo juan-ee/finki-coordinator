@@ -1,10 +1,18 @@
 # Bootstrap roster - imported ONCE by `scripts/init_db.py --seed` on first boot
 # (marker: `seeded_at` in the settings table). After that the DB is authoritative
-# and this file is documentation only (proposal §1, §8.1 step 7).
+# and this file is a placeholder example only (proposal §1, §8.1 step 7).
 #
-# telegram_id is optional: null = the member has not onboarded yet (their Telegram
-# user ID is set later via member_update once they have messaged the bot). Wake
-# times are LOCAL to each member's timezone; the coordinator computes the UTC
+# Seed hygiene (v6, D3): every `telegram_id` here is a placeholder (null). REAL
+# Telegram IDs are never committed to this repo — they enter through the door:
+#   1. the owner runs `scripts/allow.sh <id>...` (appends to TELEGRAM_ALLOWED_USERS
+#      in the gitignored .env and applies with docker compose up -d), then
+#   2. the member DMs the bot and the agent completes the row with member_add /
+#      member_update, taking the sender's ID from session context.
+# If your founding roster is known before first boot, keep their real IDs in a
+# GITIGNORED local seed file (e.g. config/members.local.yaml) and pass it via
+# `--seed`; the committed file stays placeholder-only.
+#
+# Wake times are LOCAL to each member's timezone; the coordinator computes the UTC
 # cron schedules (never put a UTC time here).
 - name: Juan
   telegram_id: null
