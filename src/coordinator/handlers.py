@@ -32,6 +32,14 @@ _CHAT_ID_RE = re.compile(r"-?[0-9]+")
 # Allowed payload keys per tool. member_add deliberately has NO "active" key: members can
 # add themselves, but only member_update changes membership status (self-service rule).
 _ADD_FIELDS = frozenset({"name", "timezone", "wake", "telegram_id", "role"})
+
+# D1 (door-first onboarding): the add is COMPLETE or it fails. The agent takes the
+# sender's Telegram ID from session context; the door itself is operator-run
+# (scripts/allow.sh) and the bot never edits its own authorization.
+_TELEGRAM_REQUIRED_MSG = (
+    "telegram_id is required: take the sender's Telegram ID from session context "
+    "(the door allowlist is operator-run via scripts/allow.sh)"
+)
 _UPDATE_FIELDS = frozenset(
     {"member_id", "wake", "active", "timezone", "role", "name", "telegram_id"}
 )
@@ -207,7 +215,6 @@ def member_add(
         or _require_str(payload, "timezone")
         or _require_str(payload, "wake")
         or _optional_str(payload, "role")
-        or _optional_int(payload, "telegram_id")
     )
     if error is not None:
         return _fail(error)
@@ -215,7 +222,6 @@ def member_add(
     timezone_name = cast("str", payload["timezone"])
     wake = cast("str", payload["wake"])
     role = cast("str | None", payload.get("role"))
-    telegram_id = cast("int | None", payload.get("telegram_id"))
 
     try:
         scheduling.validate_wake(wake)
@@ -224,13 +230,32 @@ def member_add(
     tz_error = _timezone_error(timezone_name)
     if tz_error is not None:
         return _fail(tz_error)
-    if telegram_id is not None:
-        tg_error = _telegram_id_error(telegram_id)
-        if tg_error is not None:
-            return _fail(tg_error)
-        tg_conflict = _telegram_id_conflict(members, telegram_id, exclude_id=None)
-        if tg_conflict is not None:
-            return _fail(tg_conflict)
+
+    # D1: telegram_id is REQUIRED (a JSON null counts as absent). Checked after the
+    # wake/timezone value validation so the more specific errors win first.
+    telegram_id = payload.get("telegram_id")
+    if telegram_id is None:
+        return _fail(_TELEGRAM_REQUIRED_MSG)
+    if isinstance(telegram_id, bool) or not isinstance(telegram_id, int):
+        return _fail("field 'telegram_id' must be an integer")
+    tg_error = _telegram_id_error(telegram_id)
+    if tg_error is not None:
+        return _fail(tg_error)
+    tg_conflict = _telegram_id_conflict(members, telegram_id, exclude_id=None)
+    if tg_conflict is not None:
+        return _fail(tg_conflict)
+
+    # D1: duplicate ACTIVE member names are rejected with an actionable summary —
+    # completing the existing row via member_update is the correct path, never a
+    # second row. Matching is case-insensitive on trimmed names; an INACTIVE row
+    # does not block an add (reactivation via member_update is its own path).
+    wanted = name.strip().casefold()
+    for row in members.list(active=1):
+        if row.name.strip().casefold() == wanted:
+            return _fail(
+                f"{row.name} already exists as member {row.id} (active): complete or "
+                "update that row via member_update instead of adding a duplicate"
+            )
 
     now = clock.now()
     member = members.add(

@@ -46,7 +46,12 @@ def stack(
 
 def _add_member(members: MembersRepo, **overrides: object) -> dict[str, object]:
     """Add Rita (Europe/Berlin, 08:00) through member_add with per-test overrides."""
-    payload: dict[str, object] = {"name": "Rita", "timezone": "Europe/Berlin", "wake": "08:00"}
+    payload: dict[str, object] = {
+        "name": "Rita",
+        "timezone": "Europe/Berlin",
+        "wake": "08:00",
+        "telegram_id": 555000111,
+    }
     payload.update(overrides)
     return member_add(payload, members, None, None, FixedClock())
 

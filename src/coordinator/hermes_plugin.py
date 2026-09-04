@@ -83,8 +83,10 @@ class HermesContext(Protocol):
 TOOL_SPECS: Final[dict[str, ToolSpec]] = {
     "member_add": {
         "description": (
-            "Add an active member (name, timezone, wake); returns the create relay for its"
-            " check-in cron job."
+            "Add an active member (name, timezone, wake) with their telegram_id REQUIRED —"
+            " take it from the sender's session context; the door allowlist is operator-run"
+            " via scripts/allow.sh. Duplicate active names are rejected: update the existing"
+            " row instead. Returns the create relay for its check-in cron job."
         ),
         "schema": {
             "type": "object",
@@ -95,7 +97,7 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
                 "telegram_id": {"type": "integer"},
                 "role": {"type": "string"},
             },
-            "required": ["name", "timezone", "wake"],
+            "required": ["name", "timezone", "wake", "telegram_id"],
             "additionalProperties": False,
         },
         "handler": member_add,

@@ -138,7 +138,11 @@ def test_register_wires_runtime_store_and_registers_seven_tools(
         "runtime store must live at <HERMES_HOME>/workspace/hermes/hermes-coord.db"
     )
     add = next(call["handler"] for call in ctx.calls if call["name"] == "member_add")
-    added = json.loads(str(add({"name": "Ana", "timezone": "America/Guayaquil", "wake": "08:00"})))
+    added = json.loads(
+        str(
+            add({"name": "Ana", "timezone": "America/Guayaquil", "wake": "08:00", "telegram_id": 7})
+        )
+    )
     assert added["ok"] is True, added["summary"]
     listed = next(call["handler"] for call in ctx.calls if call["name"] == "member_list")
     roster = json.loads(str(listed({})))

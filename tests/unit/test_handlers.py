@@ -249,12 +249,12 @@ def test_member_add_happy_path_creates_row_and_relay() -> None:
     assert member.updated_at == AT_NOON.isoformat()
 
 
-def test_member_add_defaults_role_and_telegram_to_none() -> None:
-    """Omitted optional fields store as None, and the member still gets a create relay."""
+def test_member_add_defaults_role_to_none() -> None:
+    """Omitted optional role stores as None, and the member still gets a create relay."""
     members, checkins, settings, clock = _wire()
 
     result = member_add(
-        {"name": "Bob", "timezone": "Europe/Berlin", "wake": "08:00"},
+        {"name": "Bob", "timezone": "Europe/Berlin", "wake": "08:00", "telegram_id": 222},
         members,
         checkins,
         settings,
@@ -268,8 +268,115 @@ def test_member_add_defaults_role_and_telegram_to_none() -> None:
     }
     member = members.get(1)
     assert member is not None
-    assert member.telegram_id is None
     assert member.role is None
+
+
+def test_member_add_requires_telegram_id_from_session_context() -> None:
+    """D1: telegram_id is REQUIRED — the failure points at the sender's session context."""
+    members, checkins, settings, clock = _wire()
+
+    result = member_add(
+        {"name": "Rita", "timezone": "America/Guayaquil", "wake": "09:00"},
+        members,
+        checkins,
+        settings,
+        clock,
+    )
+
+    assert result["ok"] is False
+    assert "telegram_id" in result["summary"]
+    assert "session context" in result["summary"]
+    assert result["cron_relay"] is None
+    assert result["data"] == {}
+    assert members.list(active=1) == []
+
+
+def test_member_add_rejects_null_telegram_id() -> None:
+    """A JSON null telegram_id is treated as absent: the required-field failure fires."""
+    members, checkins, settings, clock = _wire()
+
+    result = member_add(
+        {"name": "Rita", "timezone": "America/Guayaquil", "wake": "09:00", "telegram_id": None},
+        members,
+        checkins,
+        settings,
+        clock,
+    )
+
+    assert result["ok"] is False
+    assert "session context" in result["summary"]
+    assert members.list(active=1) == []
+
+
+def test_member_add_rejects_duplicate_active_name() -> None:
+    """D1: an active member's name cannot be added twice — the summary is actionable."""
+    members, checkins, settings, clock = _wire()
+    _seed_member(members)  # id 1, active
+
+    result = member_add(
+        {
+            "name": "Alice",
+            "timezone": "America/Guayaquil",
+            "wake": "09:00",
+            "telegram_id": 999,
+        },
+        members,
+        checkins,
+        settings,
+        clock,
+    )
+
+    assert result["ok"] is False
+    assert "member_update" in result["summary"]
+    assert result["cron_relay"] is None
+    assert len(members.list(active=1)) == 1  # no second row inserted
+
+
+def test_member_add_rejects_duplicate_active_name_case_insensitive() -> None:
+    """Name matching is case-insensitive: 'alice' cannot duplicate an active 'Alice'."""
+    members, checkins, settings, clock = _wire()
+    _seed_member(members)
+
+    result = member_add(
+        {
+            "name": "aLiCe",
+            "timezone": "America/Guayaquil",
+            "wake": "09:00",
+            "telegram_id": 999,
+        },
+        members,
+        checkins,
+        settings,
+        clock,
+    )
+
+    assert result["ok"] is False
+    assert "member_update" in result["summary"]
+    assert len(members.list(active=1)) == 1
+
+
+def test_member_add_allows_same_name_when_existing_row_is_inactive() -> None:
+    """Only ACTIVE names are protected (D1 letter): an inactive row does not block an add."""
+    members, checkins, settings, clock = _wire()
+    _seed_member(members)
+    members.update(1, updated_at=AT_NOON.isoformat(), active=0)
+
+    result = member_add(
+        {
+            "name": "Alice",
+            "timezone": "America/Guayaquil",
+            "wake": "09:00",
+            "telegram_id": 999,
+        },
+        members,
+        checkins,
+        settings,
+        clock,
+    )
+
+    assert result["ok"] is True
+    assert result["data"] == {"member_id": 2}
+    assert len(members.list(active=1)) == 1  # the NEW row is the only active one
 
 
 def test_member_add_rejects_active_key_self_service_rule() -> None:

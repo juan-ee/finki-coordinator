@@ -47,7 +47,7 @@ EXPECTED_FIELDS: dict[str, tuple[dict[str, str], list[str]]] = {
             "telegram_id": "integer",
             "role": "string",
         },
-        ["name", "timezone", "wake"],
+        ["name", "timezone", "wake", "telegram_id"],
     ),
     "member_update": (
         {
@@ -316,7 +316,7 @@ def test_dispatch_member_add_reaches_the_member_add_handler() -> None:
 
     result = dispatch(
         "member_add",
-        {"name": "Alice", "timezone": "America/Guayaquil", "wake": "08:00"},
+        {"name": "Alice", "timezone": "America/Guayaquil", "wake": "08:00", "telegram_id": 111},
         members=members,
         checkins=checkins,
         settings=settings,
@@ -377,7 +377,7 @@ def test_registered_callable_dispatches_with_the_wired_deps() -> None:
 
     call = next(c for c in ctx.calls if c["name"] == "member_add")
     raw = call["handler"](
-        {"name": "Bob", "timezone": "Europe/Berlin", "wake": "08:00"},
+        {"name": "Bob", "timezone": "Europe/Berlin", "wake": "08:00", "telegram_id": 222},
         task_id="t-1",  # host-injected dispatch kwargs must be tolerated
         session_id="s-1",
         user_task=None,
