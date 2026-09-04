@@ -248,7 +248,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   amended to match (mission sentence; scripts/ repo-map entry) — flagged to the owner.
   No code, no tests. Acceptance: proposal, ROADMAP and AGENTS.md agree on v6.
 
-- [ ] **T2.6 — Seed hygiene (D3)** — `config/members.seed.yaml`: every `telegram_id`
+- [x] **T2.6 — Seed hygiene (D3)** — `config/members.seed.yaml`: every `telegram_id`
   becomes `null` (placeholders; real Telegram IDs are NEVER committed — the founder ID
   currently in the file is flagged to the owner; history purge is the owner's call, out
   of scope); header comment rewritten for the door-first flow (IDs enter via
@@ -811,3 +811,14 @@ Pi/human; the agent only produces/refreshes the verification script.
   ignored, so allow.sh edits the repo-root .env and applies with `docker compose up -d`
   (restart semantics unchanged either way). Leaked founder ID ([redacted-founder-id]) flagged to
   the owner per D3 — history purge is the owner's call, out of scope.
+- 2026-09-04 T2.6 — review verdict: standards axis 2 HARD (the documented local-seed
+  path was not actually gitignored — guidance claimed "gitignored" with no rule;
+  multi-line test docstring vs rule 6); spec axis PASS with the gitignore gap as a
+  judgement note. ONE fresh fix round d2e560f: config/members.local.yaml added to
+  .gitignore (check-ignore verified) + docstring collapsed; delta re-review: FIXED, no
+  regressions; make check green (252). Judgement calls: (1) commit 8f99f3a's message
+  re-quotes the leaked founder ID in plaintext — a second copy that would survive a
+  file-only purge; left for the owner's history-purge decision; (2) the seed header and
+  README reference scripts/allow.sh, which lands with T2.7 (forward reference resolves
+  next task); (3) the docs name config/members.local.yaml as the local-seed example —
+  the .gitignore rule pins exactly that name.
