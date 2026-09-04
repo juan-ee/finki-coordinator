@@ -69,19 +69,25 @@ if [[ "$count" -eq 1 ]]; then
   raw_value="${raw_value%%#*}"              # drop the "#"-comment onward (IDs are digits)
   tokens=()
   IFS="," read -r -a tokens <<< "$raw_value" || true
-  for token in "${tokens[@]}"; do
+  for token in "${tokens[@]:-}"; do
     token="$(printf '%s' "$token" | tr -d '[:space:]')"
     [[ -n "$token" ]] && existing+=("$token")
   done
 fi
 
-# Which requested IDs are missing? (Already-present IDs are the idempotent case.)
+# Which requested IDs are missing? (Already-present IDs are the idempotent case;
+# a repeated request is counted once - the same ID is never appended twice.)
 missing=()
 for id in "${IDS[@]}"; do
   seen=0
   for have in "${existing[@]:-}"; do
     [[ -n "$have" && "$have" == "$id" ]] && { seen=1; break; }
   done
+  if [[ "$seen" -eq 0 ]]; then
+    for staged in "${missing[@]:-}"; do
+      [[ "$staged" == "$id" ]] && { seen=1; break; }
+    done
+  fi
   [[ "$seen" -eq 0 ]] && missing+=("$id")
 done
 
@@ -115,6 +121,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "WOULD set:  ${new_line}"
   echo "WOULD run:  docker compose up -d"
   echo "  (env changes need a container recreate - compose handles that)"
+  echo "  (never 'docker compose restart' - restart reuses the env frozen at container creation)"
   exit 0
 fi
 
@@ -124,16 +131,18 @@ tmp="$(mktemp "${ENV_FILE}.allowXXXXXX")"
 trap 'rm -f "$tmp"' EXIT
 if [[ "$count" -eq 1 ]]; then
   line_no=$(grep -n "^${KEY}=" "$ENV_FILE" | head -1 | cut -d: -f1)
-  head -n $((line_no - 1)) "$ENV_FILE" > "$tmp"
+  # head -n 0 is illegal on BSD head (macOS): skip the slice when the key is on line 1.
+  if [[ "$line_no" -gt 1 ]]; then
+    head -n $((line_no - 1)) "$ENV_FILE" > "$tmp"
+  fi
   printf '%s\n' "$new_line" >> "$tmp"
   tail -n +"$((line_no + 1))" "$ENV_FILE" >> "$tmp"
 else
-  # Keep byte-fidelity when the file does not end with a newline.
+  # Original bytes first, then a separator newline ONLY when the file does not
+  # end with one, then the new line (no leading blank line, no glued lines).
+  cat "$ENV_FILE" >> "$tmp"
   if [[ -n "$(tail -c 1 "$ENV_FILE")" ]]; then
     printf '\n' >> "$tmp"
-    cat "$ENV_FILE" >> "$tmp"
-  else
-    cat "$ENV_FILE" >> "$tmp"
   fi
   printf '%s\n' "$new_line" >> "$tmp"
 fi
@@ -148,7 +157,9 @@ echo "${KEY} is now: ${new_value}"
 if ! command -v docker >/dev/null 2>&1; then
   echo "error: $ENV_FILE was updated but docker is not on PATH to apply it." >&2
   echo "       run manually from the repo root:  docker compose up -d" >&2
+  echo "       (never 'docker compose restart' - restart reuses the env frozen at container creation)" >&2
   exit 1
 fi
 (cd "$REPO_ROOT" && docker compose up -d)
 echo "applied: docker compose up -d (container recreated with the new allowlist)"
+echo "  (never 'docker compose restart' - restart reuses the env frozen at container creation)"

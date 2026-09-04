@@ -1,6 +1,7 @@
 # Runtime state & secrets (AGENTS.md: never touch data/**, never commit .env)
 data/
 .env
+.env.allow*
 backups/
 
 # Local roster seed with real Telegram IDs (README step 3, seed-file header) — never commit

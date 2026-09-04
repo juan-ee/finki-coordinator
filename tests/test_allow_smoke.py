@@ -72,7 +72,7 @@ def test_script_passes_bash_syntax_check() -> None:
 
 
 def test_dry_run_lists_ids_names_up_d_and_writes_nothing(tmp_path: Path) -> None:
-    """--dry-run lists the missing IDs, names up -d, never suggests restart, writes 0 bytes."""
+    """--dry-run lists missing IDs, names up -d, never suggests a restart invocation."""
     env_file = tmp_path / ".env"
     _write_env(env_file, "111")
     before = env_file.read_bytes()
@@ -83,7 +83,10 @@ def test_dry_run_lists_ids_names_up_d_and_writes_nothing(tmp_path: Path) -> None
     assert env_file.read_bytes() == before, "dry-run must not write"
     assert "222" in proc.stdout and "333" in proc.stdout, "missing IDs must be listed"
     assert "docker compose up -d" in proc.stdout
-    assert "restart" not in proc.stdout.lower(), "the script must never suggest restart"
+    # Never SUGGEST a restart invocation; the rationale line may still name the word.
+    run_lines = [ln for ln in proc.stdout.splitlines() if ln.startswith("WOULD run:")]
+    assert run_lines == ["WOULD run:  docker compose up -d"], "must suggest only up -d"
+    assert "restart reuses the env frozen at container creation" in proc.stdout
 
 
 def test_real_mode_appends_missing_ids_and_runs_up_d(tmp_path: Path) -> None:
@@ -101,6 +104,22 @@ def test_real_mode_appends_missing_ids_and_runs_up_d(tmp_path: Path) -> None:
         assert secret in content
     argv = record.read_text(encoding="utf-8").splitlines()
     assert argv == ["compose", "up", "-d"], f"expected up -d, got {argv}"
+
+
+def test_real_mode_output_carries_the_never_restart_rationale(tmp_path: Path) -> None:
+    """Real mode states why up -d and never restart (spec: the output says so)."""
+    env_file = tmp_path / ".env"
+    _write_env(env_file, "111")
+    record = tmp_path / "docker-argv.txt"
+
+    proc = _run(["222"], env_file, fake_path=str(_fake_bin(tmp_path, record)))
+
+    assert proc.returncode == 0, proc.stderr
+    assert "docker compose up -d" in proc.stdout
+    assert "restart reuses the env frozen at container creation" in proc.stdout
+    applied = [ln for ln in proc.stdout.splitlines() if "applied:" in ln]
+    assert applied, "the applied line must name the command"
+    assert all("restart" not in ln.lower() for ln in applied), "applied line never names restart"
 
 
 def test_real_mode_preserves_every_other_byte(tmp_path: Path) -> None:
@@ -190,6 +209,86 @@ def test_absent_allowlist_line_is_created(tmp_path: Path) -> None:
     assert record.read_text(encoding="utf-8").splitlines() == ["compose", "up", "-d"]
 
 
+def test_absent_key_without_trailing_newline_appends_clean_line(tmp_path: Path) -> None:
+    """Key absent + no final newline: no leading blank line, real new line, bytes kept."""
+    env_file = tmp_path / ".env"
+    body = (
+        "TELEGRAM_BOT_TOKEN=tok-fixture-do-not-leak-9f8e7d\n"
+        "OPENROUTER_API_KEY=sk-or-fixture-do-not-leak-4b3a2c"  # no trailing newline
+    )
+    env_file.write_text(body, encoding="utf-8")
+    record = tmp_path / "docker-argv.txt"
+
+    proc = _run(["555"], env_file, fake_path=str(_fake_bin(tmp_path, record)))
+
+    assert proc.returncode == 0, proc.stderr
+    after = env_file.read_bytes()
+    assert not after.startswith(b"\n"), "no leading blank line before the original bytes"
+    assert after == body.encode("utf-8") + b"\nTELEGRAM_ALLOWED_USERS=555\n"
+
+
+def test_empty_allowlist_value_appends_and_is_idempotent(tmp_path: Path) -> None:
+    """TELEGRAM_ALLOWED_USERS= (nothing after '='): IDs append; rerun changes nothing."""
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "TELEGRAM_BOT_TOKEN=tok-fixture-do-not-leak-9f8e7d\n"
+        "TELEGRAM_ALLOWED_USERS=\n"
+        "OPENROUTER_API_KEY=sk-or-fixture-do-not-leak-4b3a2c\n",
+        encoding="utf-8",
+    )
+    record = tmp_path / "docker-argv.txt"
+    fake = _fake_bin(tmp_path, record)
+
+    proc = _run(["222", "333"], env_file, fake_path=str(fake))
+
+    assert proc.returncode == 0, proc.stderr
+    after_first = env_file.read_text(encoding="utf-8")
+    assert "TELEGRAM_ALLOWED_USERS=222,333\n" in after_first
+    for secret in SECRETS.values():
+        assert secret in after_first
+    assert record.read_text(encoding="utf-8").splitlines() == ["compose", "up", "-d"]
+    record.unlink()
+
+    second = _run(["222", "333"], env_file, fake_path=str(fake))
+
+    assert second.returncode == 0, second.stderr
+    assert env_file.read_text(encoding="utf-8") == after_first, "rerun must change nothing"
+    assert not record.exists(), "rerun must not invoke docker"
+
+
+def test_key_on_first_line_is_replaced(tmp_path: Path) -> None:
+    """Allowlist on line 1: no head slice runs (BSD head rejects 'head -n 0')."""
+    env_file = tmp_path / ".env"
+    lines = [
+        "TELEGRAM_ALLOWED_USERS=111  # comma-separated IDs",
+        "TELEGRAM_BOT_TOKEN=tok-fixture-do-not-leak-9f8e7d",
+        "OPENROUTER_API_KEY=sk-or-fixture-do-not-leak-4b3a2c",
+    ]
+    env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    record = tmp_path / "docker-argv.txt"
+
+    proc = _run(["222"], env_file, fake_path=str(_fake_bin(tmp_path, record)))
+
+    assert proc.returncode == 0, proc.stderr
+    expected = list(lines)
+    expected[0] = "TELEGRAM_ALLOWED_USERS=111,222  # comma-separated IDs"
+    assert env_file.read_text(encoding="utf-8").splitlines() == expected
+
+
+def test_duplicate_cli_args_are_counted_once(tmp_path: Path) -> None:
+    """Repeated CLI args are de-duplicated: '222 222' appends 222 exactly once."""
+    env_file = tmp_path / ".env"
+    _write_env(env_file, "111")
+    record = tmp_path / "docker-argv.txt"
+
+    proc = _run(["222", "222", "333"], env_file, fake_path=str(_fake_bin(tmp_path, record)))
+
+    assert proc.returncode == 0, proc.stderr
+    content = env_file.read_text(encoding="utf-8")
+    assert "TELEGRAM_ALLOWED_USERS=111,222,333" in content
+    assert "222,222" not in content, "a repeated requested ID must not be appended twice"
+
+
 def test_missing_env_file_fails_actionably(tmp_path: Path) -> None:
     """No .env at the configured path: actionable error, exit 1, nothing created."""
     env_file = tmp_path / "nonexistent.env"
@@ -227,3 +326,20 @@ def test_duplicate_key_line_is_rejected(tmp_path: Path) -> None:
 
     assert proc.returncode == 1
     assert env_file.read_bytes() == before
+
+
+def test_allow_temp_files_are_gitignored_and_env_example_stays_tracked() -> None:
+    """The allow.sh mktemp scratch (.env.allow*) is ignored; .env.example stays tracked."""
+
+    def is_ignored(repo_path: str) -> bool:
+        proc = subprocess.run(
+            ["git", "check-ignore", "-q", repo_path],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            check=False,
+        )
+        return proc.returncode == 0
+
+    assert is_ignored(".env"), ".env must stay ignored"
+    assert is_ignored(".env.allowk3XyZ9"), "the mktemp scratch file must be ignored"
+    assert not is_ignored(".env.example"), ".env.example must stay tracked"
