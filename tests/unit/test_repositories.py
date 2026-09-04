@@ -44,7 +44,6 @@ def test_member_delete_removes_member_and_checkins(conn: sqlite3.Connection) -> 
         timezone="America/Guayaquil",
         wake="08:00",
         role=None,
-        status_days=None,
         active=1,
         created_at=FIXED_CREATED_AT,
     )
@@ -98,6 +97,11 @@ def test_member_delete_failure_rolls_back_the_whole_cascade(
     assert len(checkins.by_date("2026-02-01")) == 1
 
 
+def test_member_dataclass_has_no_status_days() -> None:
+    """D4: the dead status_days column is gone from the row contract entirely."""
+    assert "status_days" not in Member.__dataclass_fields__
+
+
 def test_member_add_then_get_round_trips_every_column(conn: sqlite3.Connection) -> None:
     """add stores every column and get returns an equal Member carrying a fresh id."""
     members, _, _ = _repos(conn)
@@ -108,7 +112,6 @@ def test_member_add_then_get_round_trips_every_column(conn: sqlite3.Connection) 
         timezone="America/Guayaquil",
         wake="08:00",
         role="maintainer",
-        status_days='["mon","wed","fri"]',
         active=1,
         created_at=FIXED_CREATED_AT,
     )
@@ -121,7 +124,6 @@ def test_member_add_then_get_round_trips_every_column(conn: sqlite3.Connection) 
     assert added.timezone == "America/Guayaquil"
     assert added.wake == "08:00"
     assert added.role == "maintainer"
-    assert added.status_days == '["mon","wed","fri"]'
     assert added.active == 1
     assert added.created_at == FIXED_CREATED_AT
     assert added.updated_at == FIXED_CREATED_AT
@@ -140,7 +142,6 @@ def test_member_add_applies_schema_column_defaults(conn: sqlite3.Connection) -> 
         timezone="UTC",
         wake=None,
         role=None,
-        status_days=None,
         active=1,
         created_at=FIXED_CREATED_AT,
         updated_at=FIXED_CREATED_AT,
@@ -161,7 +162,6 @@ def test_member_update_rewrites_any_column_and_stamps_updated_at(
         timezone="Europe/Berlin",
         wake="07:00",
         role="ops",
-        status_days='["tue"]',
         active=0,
         updated_at=FIXED_UPDATED_AT,
     )
@@ -174,7 +174,6 @@ def test_member_update_rewrites_any_column_and_stamps_updated_at(
         timezone="Europe/Berlin",
         wake="07:00",
         role="ops",
-        status_days='["tue"]',
         active=0,
         created_at=FIXED_CREATED_AT,
         updated_at=FIXED_UPDATED_AT,
@@ -298,20 +297,19 @@ def test_checkin_submit_for_unknown_member_fails_on_foreign_keys(
 
 def test_settings_defaults_match_the_task_spec(conn: sqlite3.Connection) -> None:
     """DEFAULTS is exactly the module-level dict the T0.6 task block specifies."""
-    assert DEFAULTS == {"digest_time": "18:00", "digest_chat": "dm", "nudge_limit": "2"}
+    assert DEFAULTS == {"digest_chat": "dm", "nudge_limit": "2"}
 
 
 def test_settings_get_returns_default_then_set_overrides(conn: sqlite3.Connection) -> None:
     """get falls back to DEFAULTS until set stores a value; the stored value then wins."""
     _, _, settings = _repos(conn)
 
-    assert settings.get("digest_time") == "18:00"
     assert settings.get("digest_chat") == "dm"
     assert settings.get("nudge_limit") == "2"
 
-    settings.set("digest_time", "17:30")
+    settings.set("nudge_limit", "3")
 
-    assert settings.get("digest_time") == "17:30"
+    assert settings.get("nudge_limit") == "3"
     assert settings.get("digest_chat") == "dm"
 
 

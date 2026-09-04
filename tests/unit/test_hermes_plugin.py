@@ -107,7 +107,6 @@ class FakeMembers:
         timezone: str = "UTC",
         wake: str | None = None,
         role: str | None = None,
-        status_days: str | None = None,
         active: int = 1,
         created_at: str,
     ) -> Member:
@@ -119,7 +118,6 @@ class FakeMembers:
             timezone=timezone,
             wake=wake,
             role=role,
-            status_days=status_days,
             active=active,
             created_at=created_at,
             updated_at=created_at,
@@ -365,7 +363,7 @@ def test_dispatch_setting_get_reaches_the_setting_get_handler() -> None:
 
     result = dispatch(
         "setting_get",
-        {"key": "digest_time"},
+        {"key": "digest_chat"},
         members=members,
         checkins=checkins,
         settings=settings,
@@ -373,7 +371,7 @@ def test_dispatch_setting_get_reaches_the_setting_get_handler() -> None:
     )
 
     assert result["ok"] is True
-    assert result["data"] == {"key": "digest_time", "value": DEFAULTS["digest_time"]}
+    assert result["data"] == {"key": "digest_chat", "value": DEFAULTS["digest_chat"]}
     assert result["cron_relay"] is None
 
 

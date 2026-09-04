@@ -184,9 +184,9 @@ def test_bound_tool_returns_json_string_per_upstream_result_contract(
     coordinator.register(ctx)
     setting_get = next(call["handler"] for call in ctx.calls if call["name"] == "setting_get")
 
-    raw = setting_get({"key": "digest_time"}, task_id=None, session_id="", user_task=None)
+    raw = setting_get({"key": "digest_chat"}, task_id=None, session_id="", user_task=None)
 
     assert isinstance(raw, str), "upstream only accepts str tool results"
     payload = json.loads(raw)
     assert payload["ok"] is True
-    assert payload["data"]["value"] == "18:00"  # DEFAULTS fallback for digest_time
+    assert payload["data"]["value"] == "dm"  # DEFAULTS fallback for digest_chat

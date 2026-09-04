@@ -2,9 +2,24 @@
 
 import sqlite3
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 _SCHEMA_SQL_PATH = Path(__file__).with_name("schema.sql")
+
+# A migration is an SQL script (run via executescript) or a callable run against the
+# connection. Callables exist for guarded schema surgery plain SQL cannot express:
+# the status_days drop (D4) must tolerate fresh v6 stores whose migration 001 never
+# created the column, which SQLite has no conditional DDL form for.
+MigrationScript = str | Callable[[sqlite3.Connection], None]
+
+
+def _migrate_002_drop_status_days(conn: sqlite3.Connection) -> None:
+    """Drop the dead status_days column (v5 -> v6, D4); no-op when it never existed."""
+    columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(members)")}
+    if "status_days" in columns:
+        conn.execute("ALTER TABLE members DROP COLUMN status_days")
+
 
 # Worker threads share the one runtime connection (see connect() below): SQLite's
 # serialized mode keeps individual statements from tearing, but it does not make a
@@ -16,8 +31,12 @@ _SCHEMA_SQL_PATH = Path(__file__).with_name("schema.sql")
 # execute+commit handlers need no lock.
 WRITE_TRANSACTION_LOCK = threading.RLock()
 
-# Static ordered migrations; 001 applies the full schema.sql DDL (proposal.md §1).
-_MIGRATIONS: tuple[tuple[int, str], ...] = ((1, _SCHEMA_SQL_PATH.read_text(encoding="utf-8")),)
+# Static ordered migrations; 001 applies the full schema.sql DDL (proposal.md §1);
+# 002 drops the v5 status_days column (guarded no-op on fresh v6 stores — they converge).
+_MIGRATIONS: tuple[tuple[int, MigrationScript], ...] = (
+    (1, _SCHEMA_SQL_PATH.read_text(encoding="utf-8")),
+    (2, _migrate_002_drop_status_days),
+)
 
 
 # Subclasses sqlite3.Error (mirroring sqlite3's own DatabaseError placement) so adapter-layer
@@ -73,7 +92,13 @@ def migrate(conn: sqlite3.Connection, applied_at: str) -> None:
             if version in applied:
                 continue
             try:
-                conn.executescript(f"BEGIN;\n{script}")  # transaction stays open after the script
+                if isinstance(script, str):
+                    conn.executescript(
+                        f"BEGIN;\n{script}"
+                    )  # transaction stays open after the script
+                else:
+                    conn.execute("BEGIN")
+                    script(conn)
                 conn.execute(
                     "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
                     (version, applied_at),

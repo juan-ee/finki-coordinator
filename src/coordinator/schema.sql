@@ -9,7 +9,6 @@ CREATE TABLE members (
   timezone    TEXT NOT NULL DEFAULT 'UTC',   -- IANA name, e.g. 'America/Guayaquil'
   wake        TEXT,                          -- 'HH:MM' in member's local time
   role        TEXT,
-  status_days TEXT,                          -- JSON: ["mon","wed","fri"] (empty = every day)
   active      INTEGER DEFAULT 1,
   created_at  TEXT, updated_at TEXT
 );
@@ -23,6 +22,6 @@ CREATE TABLE checkins (
   UNIQUE(member_id, date)                  -- latest wins: one check-in per member per day
 );
 CREATE TABLE settings (                    -- runtime knobs (key → value, TEXT)
-  key   TEXT PRIMARY KEY,                  -- digest_time, digest_chat, nudge_limit
+  key   TEXT PRIMARY KEY,                  -- digest_chat, nudge_limit
   value TEXT
 );

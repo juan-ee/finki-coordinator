@@ -568,13 +568,7 @@ def setting_set(
 
 
 def _setting_value_error(key: str, value: str) -> str | None:
-    """Validate a setting value per key; digest_time reuses the strict wake validation."""
-    if key == "digest_time":
-        try:
-            scheduling.validate_wake(value)
-        except scheduling.SchedulingError as exc:
-            return f"digest_time: {exc}"
-        return None
+    """Validate a setting value per key (digest_time is dropped, D4 — unknown keys fail)."""
     if key == "nudge_limit":
         if _DIGITS_RE.fullmatch(value) is None:
             return f"nudge_limit must be a non-negative integer (digits only); got {value!r}"

@@ -18,7 +18,6 @@ EXPECTED_COLUMNS: dict[str, list[str]] = {
         "timezone",
         "wake",
         "role",
-        "status_days",
         "active",
         "created_at",
         "updated_at",
@@ -81,15 +80,18 @@ def test_migrate_creates_specced_tables_and_columns(tmp_path: pathlib.Path) -> N
         conn.close()
 
 
-def test_migrate_records_version_1_with_the_passed_timestamp(tmp_path: pathlib.Path) -> None:
-    """The applied version is recorded in schema_migrations with the caller's timestamp."""
+def test_migrate_records_versions_with_the_passed_timestamp(tmp_path: pathlib.Path) -> None:
+    """Every applied version is recorded in schema_migrations with the caller's timestamp."""
     conn = connect(tmp_path / "hermes-coord.db")
 
     migrate(conn, applied_at=FIXED_APPLIED_AT)
 
     try:
         rows = list(conn.execute("SELECT version, applied_at FROM schema_migrations"))
-        assert [(row["version"], row["applied_at"]) for row in rows] == [(1, FIXED_APPLIED_AT)]
+        assert [(row["version"], row["applied_at"]) for row in rows] == [
+            (1, FIXED_APPLIED_AT),
+            (2, FIXED_APPLIED_AT),
+        ]
     finally:
         conn.close()
 
@@ -103,9 +105,108 @@ def test_migrate_is_idempotent_on_double_call(tmp_path: pathlib.Path) -> None:
 
     try:
         rows = list(conn.execute("SELECT version, applied_at FROM schema_migrations"))
-        assert [(row["version"], row["applied_at"]) for row in rows] == [(1, FIXED_APPLIED_AT)]
+        assert [(row["version"], row["applied_at"]) for row in rows] == [
+            (1, FIXED_APPLIED_AT),
+            (2, FIXED_APPLIED_AT),
+        ]
     finally:
         conn.close()
+
+
+# --- migration 002: the v5 -> v6 status_days drop (D4) ----------------------------------
+
+
+def _create_v5_schema(conn: sqlite3.Connection, applied_at: str) -> None:
+    """Create the v5-shaped schema (members WITH status_days) and mark version 1 applied."""
+    conn.executescript(
+        f"""
+        CREATE TABLE members (
+          id          INTEGER PRIMARY KEY,
+          name        TEXT NOT NULL,
+          telegram_id INTEGER UNIQUE,
+          timezone    TEXT NOT NULL DEFAULT 'UTC',
+          wake        TEXT,
+          role        TEXT,
+          status_days TEXT,
+          active      INTEGER DEFAULT 1,
+          created_at  TEXT, updated_at TEXT
+        );
+        CREATE TABLE checkins (
+          id         INTEGER PRIMARY KEY,
+          member_id  INTEGER REFERENCES members(id),
+          date       TEXT NOT NULL,
+          done       TEXT, next TEXT, blockers TEXT,
+          source     TEXT DEFAULT 'auto',
+          created_at TEXT,
+          UNIQUE(member_id, date)
+        );
+        CREATE TABLE settings (
+          key   TEXT PRIMARY KEY,
+          value TEXT
+        );
+        CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT);
+        INSERT INTO schema_migrations (version, applied_at) VALUES (1, '{applied_at}');
+        """
+    )
+    conn.commit()
+
+
+def test_migration_002_drops_status_days_on_a_v5_shaped_db(tmp_path: pathlib.Path) -> None:
+    """Upgrade path: a v5 store loses status_days; its data rows survive the drop."""
+    conn = connect(tmp_path / "upgrade.db")
+    _create_v5_schema(conn, FIXED_APPLIED_AT)
+    conn.execute("INSERT INTO members (id, name, status_days) VALUES (1, 'Alice', 'mon')")
+
+    migrate(conn, applied_at=FIXED_APPLIED_AT)
+
+    try:
+        columns = _column_names(conn, "members")
+        assert "status_days" not in columns
+        row = conn.execute("SELECT id, name FROM members WHERE id = 1").fetchone()
+        assert row is not None and row["name"] == "Alice"
+    finally:
+        conn.close()
+
+
+def test_migration_002_is_a_noop_on_a_fresh_v6_schema(tmp_path: pathlib.Path) -> None:
+    """Fresh path: migration 001 never created status_days, so 002 must not raise."""
+    conn = connect(tmp_path / "fresh.db")
+
+    migrate(conn, applied_at=FIXED_APPLIED_AT)
+
+    try:
+        assert "status_days" not in _column_names(conn, "members")
+    finally:
+        conn.close()
+
+
+def test_fresh_and_upgrade_paths_converge(tmp_path: pathlib.Path) -> None:
+    """A v5 store upgraded in place ends with the same schema as a fresh v6 store."""
+    upgraded = connect(tmp_path / "upgrade.db")
+    fresh = connect(tmp_path / "fresh.db")
+    _create_v5_schema(upgraded, FIXED_APPLIED_AT)
+
+    migrate(upgraded, applied_at=FIXED_APPLIED_AT)
+    migrate(fresh, applied_at=FIXED_APPLIED_AT)
+
+    try:
+        # Effective-schema convergence: ALTER TABLE DROP COLUMN does not rewrite the
+        # stored CREATE TABLE text, so sqlite_master.sql can retain the dropped column
+        # on the upgrade path — the columns, as the engine sees them, are the contract.
+        for table in ("members", "checkins", "settings"):
+            assert _column_names(upgraded, table) == _column_names(fresh, table)
+        upgraded_tables = {
+            str(row["name"])
+            for row in upgraded.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
+        fresh_tables = {
+            str(row["name"])
+            for row in fresh.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
+        assert upgraded_tables == fresh_tables
+    finally:
+        upgraded.close()
+        fresh.close()
 
 
 def test_checkins_unique_constraint_on_member_and_date(tmp_path: pathlib.Path) -> None:

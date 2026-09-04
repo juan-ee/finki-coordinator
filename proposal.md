@@ -245,7 +245,7 @@ rclone remotes to configure, and nothing Drive-related passes through compose.
 project:
   name: my-project
   drive_root: "MyProject"          # folder inside the Shared Drive
-  timezone: Europe/Berlin          # anchor for human-facing times (digest_time)
+  timezone: Europe/Berlin          # anchor for human-facing times (the digest)
 telegram:
   group_id: ""                     # optional; empty = no group broadcasts
 model:

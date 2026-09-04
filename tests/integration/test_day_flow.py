@@ -177,16 +177,16 @@ def test_checkins_upsert_to_four_rows_and_by_date(day: Day) -> None:
 
 
 def test_digest_settings_roundtrip(day: Day) -> None:
-    """setting_set persists the three digest knobs and setting_get reads each back verbatim."""
+    """setting_set persists the digest knobs and setting_get reads each back verbatim."""
     members, checkins, settings, clock = day
-    knobs = {"digest_time": "17:00", "digest_chat": "dm", "nudge_limit": "2"}
+    knobs = {"digest_chat": "dm", "nudge_limit": "2"}
 
     set_results = [
         setting_set({"key": key, "value": value}, members, checkins, settings, clock)
         for key, value in knobs.items()
     ]
 
-    assert [result["ok"] for result in set_results] == [True, True, True]
+    assert [result["ok"] for result in set_results] == [True, True]
     for key, value in knobs.items():
         readback = setting_get({"key": key}, members, checkins, settings, clock)
         assert readback["ok"] is True

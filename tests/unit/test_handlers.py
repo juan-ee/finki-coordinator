@@ -62,7 +62,6 @@ class FakeMembers:
         timezone: str = "UTC",
         wake: str | None = None,
         role: str | None = None,
-        status_days: str | None = None,
         active: int = 1,
         created_at: str,
     ) -> Member:
@@ -74,7 +73,6 @@ class FakeMembers:
             timezone=timezone,
             wake=wake,
             role=role,
-            status_days=status_days,
             active=active,
             created_at=created_at,
             updated_at=created_at,
@@ -93,7 +91,6 @@ class FakeMembers:
         timezone: str | None = None,
         wake: str | None = None,
         role: str | None = None,
-        status_days: str | None = None,
         active: int | None = None,
     ) -> Member | None:
         """Set the supplied columns, stamping updated_at (None when the id is unknown)."""
@@ -107,7 +104,6 @@ class FakeMembers:
             ("timezone", timezone),
             ("wake", wake),
             ("role", role),
-            ("status_days", status_days),
             ("active", active),
         ):
             if value is not None:
@@ -757,7 +753,7 @@ def test_member_update_rejects_bad_timezone() -> None:
 
 
 def test_member_update_rejects_unknown_field() -> None:
-    """status_days is a column but not a member_update payload field, so it is rejected."""
+    """status_days is not a member_update payload field, so it is rejected."""
     members, checkins, settings, clock = _wire()
     _seed_member(members)
 
@@ -989,22 +985,22 @@ def test_setting_get_returns_default_when_not_stored() -> None:
     """An unset key falls back to the repo DEFAULTS."""
     members, checkins, settings, clock = _wire()
 
-    result = setting_get({"key": "digest_time"}, members, checkins, settings, clock)
+    result = setting_get({"key": "digest_chat"}, members, checkins, settings, clock)
 
     assert result["ok"] is True
-    assert result["data"] == {"key": "digest_time", "value": DEFAULTS["digest_time"]}
+    assert result["data"] == {"key": "digest_chat", "value": DEFAULTS["digest_chat"]}
     assert result["cron_relay"] is None
 
 
 def test_setting_get_returns_stored_value() -> None:
     """A stored value wins over the default."""
     members, checkins, settings, clock = _wire()
-    settings.set("digest_time", "17:30")
+    settings.set("digest_chat", "-100200300")
 
-    result = setting_get({"key": "digest_time"}, members, checkins, settings, clock)
+    result = setting_get({"key": "digest_chat"}, members, checkins, settings, clock)
 
     assert result["ok"] is True
-    assert result["data"] == {"key": "digest_time", "value": "17:30"}
+    assert result["data"] == {"key": "digest_chat", "value": "-100200300"}
 
 
 def test_setting_get_unknown_key_names_valid_keys() -> None:
@@ -1026,13 +1022,11 @@ def test_setting_set_happy_path() -> None:
     """A valid setting is stored; no cron relay in T0.8 (digest-job relay is out of scope)."""
     members, checkins, settings, clock = _wire()
 
-    result = setting_set(
-        {"key": "digest_time", "value": "17:30"}, members, checkins, settings, clock
-    )
+    result = setting_set({"key": "nudge_limit", "value": "3"}, members, checkins, settings, clock)
 
     assert result["ok"] is True
     assert result["cron_relay"] is None
-    assert settings.get("digest_time") == "17:30"
+    assert settings.get("nudge_limit") == "3"
 
 
 def test_setting_set_rejects_unknown_key() -> None:
@@ -1047,17 +1041,27 @@ def test_setting_set_rejects_unknown_key() -> None:
         assert valid_key in result["summary"]
 
 
-def test_setting_set_rejects_bad_digest_time() -> None:
-    """digest_time is an HH:MM, validated through scheduling.validate_wake."""
+def test_setting_set_rejects_dropped_digest_time() -> None:
+    """D4: digest_time was a dial connected to nothing — it is no longer a setting key."""
     members, checkins, settings, clock = _wire()
 
     result = setting_set(
-        {"key": "digest_time", "value": "25:00"}, members, checkins, settings, clock
+        {"key": "digest_time", "value": "17:30"}, members, checkins, settings, clock
     )
 
     assert result["ok"] is False
-    assert "25:00" in result["summary"]
+    assert "digest_time" in result["summary"]
     assert result["cron_relay"] is None
+
+
+def test_setting_get_rejects_dropped_digest_time() -> None:
+    """D4: reading digest_time fails like any unknown key."""
+    members, checkins, settings, clock = _wire()
+
+    result = setting_get({"key": "digest_time"}, members, checkins, settings, clock)
+
+    assert result["ok"] is False
+    assert "digest_time" in result["summary"]
 
 
 @pytest.mark.parametrize("value", ["abc", "-1", "1.5", ""])
@@ -1110,7 +1114,6 @@ def test_setting_set_requires_value() -> None:
         pytest.param("digest_chat", "12345", id="chat-id"),
         pytest.param("digest_chat", "-100200300", id="chat-group-negative"),
         pytest.param("nudge_limit", "2", id="nudge-digits"),
-        pytest.param("digest_time", "07:15", id="digest-hhmm"),
     ],
 )
 def test_setting_set_accepts_valid_values(key: str, value: str) -> None:

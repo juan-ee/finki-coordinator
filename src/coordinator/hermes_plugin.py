@@ -183,8 +183,7 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
     },
     "setting_get": {
         "description": (
-            "Read one setting (digest_time, digest_chat, nudge_limit); unset keys fall back"
-            " to defaults."
+            "Read one setting (digest_chat, nudge_limit); unset keys fall back to defaults."
         ),
         "schema": {
             "type": "object",

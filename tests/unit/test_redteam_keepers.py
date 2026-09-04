@@ -306,8 +306,8 @@ def test_unicode_names_and_huge_fields_are_stored_verbatim(
 @pytest.mark.parametrize(
     ("key", "value", "expect_ok"),
     [
-        pytest.param("digest_time", "00:00", True, id="time-min"),
-        pytest.param("digest_time", "23:59", True, id="time-max"),
+        pytest.param("digest_time", "00:00", False, id="dropped-dial-min"),
+        pytest.param("digest_time", "23:59", False, id="dropped-dial-max"),
         pytest.param("digest_time", "24:00", False, id="time-overflow"),
         pytest.param("digest_time", "18:00 ", False, id="time-trailing-space"),
         pytest.param("nudge_limit", "000", True, id="nudge-zero-padded"),

@@ -7,7 +7,7 @@ from typing import Protocol
 from .db import WRITE_TRANSACTION_LOCK
 
 _MEMBER_COLUMNS = (
-    "SELECT id, name, telegram_id, timezone, wake, role, status_days, active, "
+    "SELECT id, name, telegram_id, timezone, wake, role, active, "
     "created_at, updated_at FROM members"
 )
 _CHECKIN_COLUMNS = (
@@ -16,7 +16,6 @@ _CHECKIN_COLUMNS = (
 
 # Runtime knob defaults: SettingsRepo.get falls back to these when a key is not stored.
 DEFAULTS: dict[str, str] = {
-    "digest_time": "18:00",
     "digest_chat": "dm",
     "nudge_limit": "2",
 }
@@ -32,7 +31,6 @@ class Member:
     timezone: str
     wake: str | None
     role: str | None
-    status_days: str | None
     active: int
     created_at: str | None
     updated_at: str | None
@@ -63,7 +61,6 @@ class MembersRepository(Protocol):
         timezone: str = "UTC",
         wake: str | None = None,
         role: str | None = None,
-        status_days: str | None = None,
         active: int = 1,
         created_at: str,
     ) -> Member:
@@ -80,7 +77,6 @@ class MembersRepository(Protocol):
         timezone: str | None = None,
         wake: str | None = None,
         role: str | None = None,
-        status_days: str | None = None,
         active: int | None = None,
     ) -> Member | None:
         """Set the supplied columns on a member, stamping updated_at (None if id unknown)."""
@@ -154,7 +150,6 @@ def _member_from_row(row: sqlite3.Row) -> Member:
         timezone=str(row["timezone"]),
         wake=_nullable_str(row, "wake"),
         role=_nullable_str(row, "role"),
-        status_days=_nullable_str(row, "status_days"),
         active=int(row["active"]),
         created_at=_nullable_str(row, "created_at"),
         updated_at=_nullable_str(row, "updated_at"),
@@ -190,22 +185,20 @@ class MembersRepo:
         timezone: str = "UTC",
         wake: str | None = None,
         role: str | None = None,
-        status_days: str | None = None,
         active: int = 1,
         created_at: str,
     ) -> Member:
         """Insert a member and return the stored row."""
         cursor = self._conn.execute(
             "INSERT INTO members"
-            " (name, telegram_id, timezone, wake, role, status_days, active,"
-            " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " (name, telegram_id, timezone, wake, role, active,"
+            " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 name,
                 telegram_id,
                 timezone,
                 wake,
                 role,
-                status_days,
                 active,
                 created_at,
                 created_at,  # a fresh row is born with updated_at = created_at
@@ -227,7 +220,6 @@ class MembersRepo:
         timezone: str | None = None,
         wake: str | None = None,
         role: str | None = None,
-        status_days: str | None = None,
         active: int | None = None,
     ) -> Member | None:
         """Set the supplied columns on a member, stamping updated_at (None if id unknown)."""
@@ -242,8 +234,6 @@ class MembersRepo:
             columns["wake"] = wake
         if role is not None:
             columns["role"] = role
-        if status_days is not None:
-            columns["status_days"] = status_days
         if active is not None:
             columns["active"] = active
         assignments = ", ".join(f"{column} = ?" for column in columns)
