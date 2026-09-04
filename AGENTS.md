@@ -13,8 +13,10 @@
 
 Build a clonable template repo that boots a Telegram-based async project coordinator on a
 Raspberry Pi 5 (Docker, hermes-agent at a pinned ref), with: a Python coordinator plugin
-(SQLite members/checkins/settings, 7 tools), UTC-anchored timezone-safe cron scheduling,
-an rclone-bisynced Google Shared Drive knowledge base, and an OpenExecutive-derived persona.
+(SQLite members/checkins/settings + knowledge cache, 10 tools), UTC-anchored timezone-safe
+cron scheduling, a Google Shared Drive knowledge base managed through Hermes' built-in
+google-workspace skill ($GAPI) with a local SQLite FTS5 index, and an OpenExecutive-derived
+persona.
 Quality bar: it must survive being cloned and run by a stranger with only the README.
 
 ## Repository map (target layout)
@@ -31,11 +33,12 @@ src/coordinator/           ← the Python package (pure core, testable)
   config.py                ← load + validate config.yaml against the JSON Schema
   scheduling.py            ← ALL timezone→cron math (pure, no I/O)
   db.py                    ← connection factory (WAL, busy_timeout) + migrations
-  repositories.py          ← MembersRepo / CheckinsRepo / SettingsRepo
+  repositories.py          ← MembersRepo / CheckinsRepo / SettingsRepo / KnowledgeRepo
+  knowledge.py             ← markdown → FTS5 chunking (pure, no I/O)
   handlers.py              ← tool payload validation + orchestration + relay building
   hermes_plugin.py         ← thin adapter: register tools with Hermes (no logic here)
-  schema.sql               ← SQLite DDL (v5 schema from proposal §1)
-scripts/                   ← init_db.py · generate_agents_md.py · setup.sh · sync.sh · backup.sh
+  schema.sql               ← SQLite DDL (v6 schema from proposal §1)
+scripts/                   ← init_db.py · generate_agents_md.py · setup.sh · allow.sh · backup.sh
 config/                    ← config.example.yaml · config.schema.json · members.seed.yaml
 prompts/                   ← persona.md (→ SOUL.md) · triage.md · skills/check-in · skills/digest
 templates/                 ← brief.md · adr.md · meeting-notes.md · proposal.md (doc templates)

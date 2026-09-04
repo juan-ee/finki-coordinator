@@ -10,7 +10,7 @@ Pi/human; the agent only produces/refreshes the verification script.
 |---|---|---|
 | 0 Foundation | `make check` green on full package; compose validates; CI wired | T0.14 |
 | 1 Core bot | Plugin + skills + integration day-flow tests pass | T1.6 manual on Pi |
-| 2 Knowledge | Sync wrapper + doc templates + project seed ship | T2.4 manual on Pi |
+| 2 Member lifecycle & knowledge (v6) | Door script + 10-tool surface + $GAPI knowledge loop + seed hygiene | T2.17 manual on Pi |
 | 3 Persona | SOUL.md toggle + triage rules + license notices | — |
 | 4 Hardening | Backup/restore + runbooks | T4.3 manual on Pi |
 | 5 Escalation | Spike doc only (do not implement) | — |
@@ -213,12 +213,20 @@ Pi/human; the agent only produces/refreshes the verification script.
   `docker/README.md`.
   Tests: `tests/test_compose.py` drift guard (pin file == build URL) stays green.
 
-## Phase 2 — Knowledge
+## Phase 2 — Member lifecycle & knowledge (v6 restructure)
+
+> **v6 note (2026-09-03):** this phase was re-queued by owner directives D1–D4
+> (docs/audit/2026-09-03-audit.md). T2.1–T2.3 shipped as built; T2.1's bisync wrapper is
+> removed again by T2.11 (bisync never reached production — the old T2.4 gate was retired
+> mid-run at the Drive-OAuth incident, before any baseline existed; see Notes log). The
+> former T2.4 bisync gate is superseded by T2.17. Tasks run top-to-bottom; T2.5 is the
+> DOC task that produced this queue and the v6 proposal.
 
 - [x] **T2.1 `scripts/sync.sh`** — bisync wrapper: logs to `data/logs/sync.log`, boot mode
   flag, refuses `--resync` without `--i-know-what-im-doing`, uses `RCLONE_REMOTE` +
   `RCLONE_ROOT_FOLDER_ID` from env. Tests: `tests/test_sync_smoke.py` — `bash -n`;
   dry-run without env vars exits non-zero with actionable message.
+  *(v6: superseded — the wrapper is deleted with its tests by T2.11 per D4.)*
 
 - [x] **T2.2 `DOC` — `templates/`** — `brief.md` (mission/goals/success criteria/
   constraints), `adr.md` (context/decision/consequences), `meeting-notes.md`,
@@ -229,9 +237,167 @@ Pi/human; the agent only produces/refreshes the verification script.
   `inbox/ assets/ people/ journal/ .archive/`; `setup.sh` copies it into `data/project/`
   on first boot (never overwrites existing files).
 
-- [ ] **T2.4 `DOC` `MANUAL-GATE` — `docs/verify/phase2.md`** — bisync cadence observed;
-  conflict drill (edit same file both sides, recover via runbook, no data loss);
-  AGENTS.md regeneration; doc-extraction check (PDF uploaded on Drive readable by agent).
+- [x] **T2.5 `DOC` — v6 restructure docs (proposal + this queue)** — amend
+  `proposal.md` (title/decisions round 5; §1 door-first onboarding, 10-tool surface,
+  v6 schema incl. `knowledge`/`knowledge_fts` DDL; §2 env inventory without the
+  Drive/rclone vars + allow.sh pointer; §3 knowledge layout rewrite (Drive = record,
+  local = cache/index + agent workspace, DOWN/INDEX/READ/UP loop, escalation triggers);
+  §5 phases; §6 risks 2/9; §7 v6 decisions incl. the `hermes config set` allowlist
+  check result; §8.1/§8.2 runbooks incl. the `up -d`-not-`restart` correction; §10
+  changelog v5→v6) and re-queue this phase (T2.6–T2.17). Two stale `AGENTS.md` lines
+  amended to match (mission sentence; scripts/ repo-map entry) — flagged to the owner.
+  No code, no tests. Acceptance: proposal, ROADMAP and AGENTS.md agree on v6.
+
+- [ ] **T2.6 — Seed hygiene (D3)** — `config/members.seed.yaml`: every `telegram_id`
+  becomes `null` (placeholders; real Telegram IDs are NEVER committed — the founder ID
+  currently in the file is flagged to the owner; history purge is the owner's call, out
+  of scope); header comment rewritten for the door-first flow (IDs enter via
+  `scripts/allow.sh` + `member_add`/`member_update`, never the seed; a pre-known
+  founding roster may live in a gitignored local seed file). README quickstart step 3
+  stops telling strangers to enter real IDs.
+  Tests FIRST (red): `tests/unit/test_seed_file.py` — a placeholder-hygiene test
+  (every committed `telegram_id` is None) replaces the current null-or-integer
+  acceptance. Acceptance: `make check` green.
+
+- [ ] **T2.7 — `scripts/allow.sh` door script (D1)** — `scripts/allow.sh <id>...`:
+  every arg must be numeric (digits only; otherwise usage + exit 2); loads repo-root
+  `.env`; appends each ID missing from `TELEGRAM_ALLOWED_USERS` (comma-join; creates
+  the line if absent; idempotent — a second run changes nothing); rewrites `.env`
+  preserving every other byte; prints ONLY key names + the allowlist diff — never
+  another key's value; applies with `docker compose up -d` (never `restart` — restart
+  reuses the env frozen at container creation; the output says so). `--dry-run` prints
+  actions, writes nothing. Design decision (proposal §7.6): `hermes config set` CAN
+  write env-style keys, but the compose-injected container env shadows it — the script
+  edits the repo-root `.env` directly.
+  Tests: `tests/test_allow_smoke.py` — `bash -n`; non-numeric rejected; idempotent
+  rerun byte-identical; other lines preserved byte-for-byte; no non-allowlist secret
+  printed; `--dry-run` writes nothing and names `docker compose up -d`; absent/empty
+  `TELEGRAM_ALLOWED_USERS` handled.
+  Docs in the same commit: `.env.example` pointer, README quickstart note,
+  docker-compose `TELEGRAM_ALLOWED_USERS` comment.
+
+- [ ] **T2.8 — `member_add` rework (D1)** — `telegram_id` REQUIRED end to end:
+  `handlers.member_add` fails without it (actionable summary: take the sender's ID from
+  session context); `TOOL_SPECS["member_add"]` schema `required` gains `telegram_id`
+  and the description says where it comes from (the door is operator-run via
+  `allow.sh`). Duplicate active-member names rejected with an actionable summary
+  (case-insensitive; the summary names the existing row and points at
+  `member_update`); a duplicate against an INACTIVE row still adds (D1 letter; edge
+  noted in Notes).
+  Tests FIRST: `tests/unit/test_handlers.py` (add without telegram_id → ok:False
+  naming it; duplicate active name exact + case variant → ok:False with the row id;
+  inactive-name duplicate → ok:True); `tests/unit/test_hermes_plugin.py` (required
+  list + description). Docs in the same commit: `prompts/persona.md` hard-rule 4
+  gains the onboarding rule (door first; then the sender's ID completes the row).
+
+- [ ] **T2.9 — `member_delete` tool (D1)** — owner-only hard removal (tool 8/10):
+  `handlers.member_delete` (payload `{member_id}`) deletes the member's checkins rows
+  then the member row in one transaction (FK enforcement fixes the order); returns
+  `cron_relay {"action": "remove", "name": "checkin-<id>"}` when the row had a wake
+  (wake ⇒ a job existed; `cronjob` remove accepts a job name); no relay for wake-less
+  rows; unknown id → ok:False. Owner-only is enforced at the persona layer (hard rule 4
+  — the plugin has no caller identity; same basis as the roster-admin rule); technical
+  enforcement stays a documented escalation, not scope.
+  `TOOL_SPECS["member_delete"]` + `MembersRepository.delete()` + SQLite impl.
+  Tests FIRST: handler (happy path removes member+checkins, relay asserted exactly;
+  unknown id; wake-less no relay), repo (`delete` True/False, checkins gone), plugin
+  (8 registrations, schema). Docs in the same commit: persona rule 4 mention; README
+  tool line (8).
+
+- [ ] **T2.10 — Dead weight: `status_days` + `digest_time` (D4)** — versioned
+  migration 002 drops `members.status_days`; `db._MIGRATIONS` gains
+  callable-migration support (guarded drop: fresh v6 DBs — which never had the column —
+  no-op; v5 DBs converge) + a convergence test (fresh-path and upgrade-path
+  `sqlite_master` identical). `repositories.py`: `Member` dataclass, column lists,
+  add/update signatures lose `status_days`. `DEFAULTS` loses `digest_time`
+  (`setting_get`/`setting_set` reject it via the unknown-key path);
+  `_setting_value_error` drops the digest_time branch. Tests FIRST: migration tests
+  (v5-shaped DB → column gone; fresh DB → 002 no-op), DEFAULTS/rejection tests flip.
+  Notes: the recorded alternative for a digest dial (a `cron_relay` from
+  `setting_set`) stays documented, not implemented.
+
+- [ ] **T2.11 — Remove `scripts/sync.sh` + its tests (D4)** — delete `scripts/sync.sh`
+  and `tests/test_sync_smoke.py` in the same commit (`make check` stays green — rule 5).
+  `prompts/skills/digest/SKILL.md` step 6 becomes the upload step ("upload the fresh
+  journal entry to Drive via `$GAPI drive upload`; if the upload fails, say so in one
+  line at the end of the journal entry — drift must be visible, not silent") and the
+  sync-failure tone note follows. README architecture lines (bisync mentions) rewritten
+  to the v6 loop. Notes: the $GAPI upload path is verified in-container by T2.17 (FIRST
+  item) — between T2.11 and the gate the digest upload instruction is doc-forward by
+  design.
+
+- [ ] **T2.12 — Drive env + rclone cleanup (D4)** — `docker-compose.yml` drops the six
+  Drive/rclone env passthroughs (comments updated: Drive access is $GAPI with a
+  skill-managed credential; `data/project/` is the agent workspace, not a mirror).
+  `tests/test_compose.py` FIRST gains the env set-equality drift guard (rendered
+  environment keys == PASSTHROUGH_VARS — pays off the T0.14 note); that failing
+  assertion is the red that forces the removal. `scripts/setup.sh` loses step 3
+  (rclone.conf write), the Drive trio in REQUIRED_KEYS, and the RCLONE_* knobs
+  (renumber 1/6..6/6; docstring). `tests/test_setup_smoke.py` updated (no rclone
+  artifacts; REQUIRED_ENV updated). `.env.example` loses the Google Drive section.
+  README quickstart env list + Requirements Drive line updated ($GAPI; no local OAuth
+  files).
+
+- [ ] **T2.13 — Knowledge tables + chunker (D2)** — `schema.sql` gains `knowledge` +
+  `knowledge_fts` exactly per proposal §1 (external-content FTS5,
+  `unicode61 remove_diacritics 2`, `UNIQUE(file_id, heading)`); versioned migration
+  003 (IF NOT EXISTS forms; fresh+upgrade convergence test like T2.10); new pure module
+  `src/coordinator/knowledge.py`: `chunk_markdown(title, body)` — one chunk per
+  markdown `##` section (`###` content stays inside its `##` chunk), leading
+  preamble = one NULL-heading chunk, heading-less documents = one chunk, no overlap;
+  duplicate headings disambiguated with an occurrence suffix so
+  `UNIQUE(file_id, heading)` holds (documented interpretation). `repositories.py`:
+  `KnowledgeRepository` Protocol + SQLite impl — `replace_file(...)` (per-file
+  reindex: FTS delete → row delete → row insert → FTS insert), `watermark()` =
+  `MAX(modified_time)` (derived state; nothing for the agent to clobber),
+  `search(query, limit)` = FTS MATCH ordered by `bm25(knowledge_fts, 10.0, 1.0)`.
+  Tests FIRST: chunker cases; per-file replace idempotence; the audit's TDD anchor —
+  `MATCH 'decision'` finds a chunk containing "decisión"; title-vs-body bm25 ranking;
+  `'integrity-check'` passes on a consistent index and RAISES after an out-of-band
+  knowledge-row delete.
+
+- [ ] **T2.14 — `knowledge_sync` tool (D2)** — two-call protocol, agent-mediated $GAPI
+  (pure core; no network, no new deps): call 1 `{}` (plan) →
+  `data: {watermark, files_hint}` — the agent lists the Drive root via `$GAPI`,
+  filters files with `modifiedTime` past the watermark, downloads those; call 2
+  `{files: [{file_id, path, title, modified_time, content}, ...]}` (ingest) → chunk +
+  `replace_file` each, advance the watermark, `data: {synced, watermark}`. Malformed
+  entries → ok:False actionable; empty ingest → ok:True no-op. TOOL_SPECS entry
+  (tool 9/10) with the protocol in the description. Tests FIRST: plan-mode watermark;
+  ingest chunks+stores+advances; re-ingest of the same file is idempotent; malformed
+  batch rejected. README tool line (9).
+
+- [ ] **T2.15 — `knowledge_search` tool + query map (D2)** —
+  `handlers.knowledge_search` (`query` required non-empty; optional `limit` default
+  3, capped at 10) → top chunks `[{file_id, path, title, heading}]`; the tool
+  description says to confirm against the LIVE Drive original before quoting — the
+  index is a finding aid. TOOL_SPECS entry (tool 10/10).
+  `scripts/generate_agents_md.py` query map rewritten per proposal §3 (mission →
+  Drive brief; questions → knowledge_search then live read; status → journal/ +
+  checkins_by_date; tasks → kanban; who → member_list) + golden tests updated. Tests
+  FIRST: tool missing (red); validation; ranking through the tool layer; golden
+  render.
+
+- [ ] **T2.16 `DOC` — persona/skills knowledge guidance + coherence pass** —
+  `prompts/persona.md`: knowledge rules (search the index, then read the live Drive
+  original before quoting; the cache is an index, Drive is the record; agent-authored
+  files are uploaded after writing); new `prompts/skills/knowledge/SKILL.md` (when to
+  knowledge_search vs live read; how to run a knowledge_sync round; upload-after-write);
+  README full pass (10 tools, v6 architecture, quickstart: allow.sh + seed placeholders
+  + no rclone, status table); KICKOFF.md's "never touch proposal.md" line updated
+  (proposal edits are task-sanctioned in v6). Acceptance: no bisync/rclone/
+  digest_time/status_days references remain anywhere outside audit/history docs.
+
+- [ ] **T2.17 `DOC` `MANUAL-GATE` — `docs/verify/phase2.md` (v6)** — full rewrite;
+  FIRST item verifies `$GAPI` works in-container at our HERMES_REF (DM the agent: list
+  the Drive root via the google-workspace skill) — **if it fails: STOP the phase and
+  report to the owner; no workarounds.** Then: knowledge_sync incremental round-trip
+  (first sync ingests; second sync is a no-op); knowledge_search diacritics proof on
+  real data (`MATCH 'decision'` finds "decisión") + the agent confirms against the
+  live file; FTS5 integrity-check command clean; UP path (journal entry uploaded,
+  visible in the Drive browser); DOWN proof (edit a doc on Drive, next sync picks it
+  up); digest end-to-end; AGENTS.md query map live; doc-extraction check ($GAPI
+  export). No bisync/rclone steps remain. Leave unchecked for the human.
 
 ## Phase 3 — Persona
 
@@ -251,12 +417,15 @@ Pi/human; the agent only produces/refreshes the verification script.
 
 - [ ] **T4.1 `scripts/backup.sh`** — tar.gz of `data/project/` + `hermes-coord.db` +
   kanban DB (path via `HERMES_HOME`) into `backups/YYYY-MM-DD-HHMM.tar.gz`; retention 7;
-  optional rclone copy to Drive; `--dry-run`. Tests: `tests/test_backup_smoke.py` —
+  no Drive copy step (v6: Drive holds the record docs; the knowledge cache inside
+  hermes-coord.db is rebuildable from Drive — backing it up is convenience, not
+  necessity); `--dry-run`. Tests: `tests/test_backup_smoke.py` —
   `bash -n`; dry-run writes nothing.
 
-- [ ] **T4.2 `DOC` — `docs/runbooks/`** — `bisync-recovery.md` (the never-blind-resync
-  procedure), `restore-backup.md`, `new-member.md` (proposal §8.2, verbatim steps),
-  `dst-resync.md` (the twice-a-year conversation).
+- [ ] **T4.2 `DOC` — `docs/runbooks/`** — `restore-backup.md`, `new-member.md`
+  (proposal §8.2 v6 door-first flow — `allow.sh` + the sender's ID completing the row —
+  verbatim steps), `dst-resync.md` (the twice-a-year conversation). (The v5
+  `bisync-recovery.md` runbook is gone with bisync — D4.)
 
 - [ ] **T4.3 `DOC` `MANUAL-GATE` — `docs/verify/phase4.md`** — backup restore drill
   executed and signed off; backup scheduled (host cron or compose service); cost screenshot
@@ -621,3 +790,19 @@ Pi/human; the agent only produces/refreshes the verification script.
   runs the full script with fixture env (no mocks, offline): proves exit 0, seeded contents,
   and never-overwrite (a pre-existing custom README.md survives; docs/index.md edited
   between runs survives run 2), using the committed example yaml as the valid config.
+- 2026-09-03 v6 restructure (owner directives D1–D4, docs/audit/2026-09-03-audit.md) —
+  T2.5 DOC executed directly (no subagent, no review; make check green): proposal.md
+  amended to v6 (§1/§2/§3/§5/§6/§7/§8/§10) and Phase 2 re-queued as T2.5–T2.17. The old
+  T2.4 (bisync gate) is RETIRED: the gate was abandoned mid-run at the Drive-OAuth
+  incident (running record: .scratch/phase2-gate-running-record.md) and bisync never
+  reached production — which is what makes D2's deletion safe; T2.1's wrapper is removed
+  with its tests by T2.11. AGENTS.md: two stale lines amended (mission "rclone-bisynced"
+  sentence; scripts/ repo-map entry; schema comment v5→v6) — mechanical consequences of
+  the sanctioned redesign, flagged to the owner; the constitution's rules are untouched.
+  D1 10-minute check recorded (proposal §7.6, §8.2): `hermes config set` CAN write
+  env-style keys (docs: auto-routes env vars to HERMES_HOME/.env), but our compose
+  injects TELEGRAM_ALLOWED_USERS from the repo-root .env as a container env var and
+  container env always shadows dotenv values — the config-set path would be silently
+  ignored, so allow.sh edits the repo-root .env and applies with `docker compose up -d`
+  (restart semantics unchanged either way). Leaked founder ID ([redacted-founder-id]) flagged to
+  the owner per D3 — history purge is the owner's call, out of scope.
