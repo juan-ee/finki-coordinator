@@ -15,10 +15,13 @@ MigrationScript = str | Callable[[sqlite3.Connection], None]
 
 
 def _migrate_002_drop_status_days(conn: sqlite3.Connection) -> None:
-    """Drop the dead status_days column (v5 -> v6, D4); no-op when it never existed."""
+    """Drop the dead status_days column and purge the digest_time setting (v5 -> v6, D4)."""
     columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(members)")}
     if "status_days" in columns:
         conn.execute("ALTER TABLE members DROP COLUMN status_days")
+    # Unguarded by design: deleting an absent key's row is a no-op, so fresh v6 stores
+    # stay untouched while v5 upgrade stores shed the dropped dial's stored row.
+    conn.execute("DELETE FROM settings WHERE key = 'digest_time'")
 
 
 # Worker threads share the one runtime connection (see connect() below): SQLite's
@@ -32,7 +35,8 @@ def _migrate_002_drop_status_days(conn: sqlite3.Connection) -> None:
 WRITE_TRANSACTION_LOCK = threading.RLock()
 
 # Static ordered migrations; 001 applies the full schema.sql DDL (proposal.md §1);
-# 002 drops the v5 status_days column (guarded no-op on fresh v6 stores — they converge).
+# 002 drops the v5 status_days column and purges the stored digest_time setting
+# (both no-ops on fresh v6 stores — they converge).
 _MIGRATIONS: tuple[tuple[int, MigrationScript], ...] = (
     (1, _SCHEMA_SQL_PATH.read_text(encoding="utf-8")),
     (2, _migrate_002_drop_status_days),

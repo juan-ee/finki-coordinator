@@ -167,7 +167,7 @@ def _date_error(value: str) -> str | None:
 
 
 def _valid_keys() -> str:
-    """Render the three known setting keys for error messages."""
+    """Render the two known setting keys for error messages."""
     return ", ".join(sorted(DEFAULTS))
 
 

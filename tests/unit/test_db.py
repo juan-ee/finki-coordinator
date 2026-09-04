@@ -7,6 +7,7 @@ import threading
 import pytest
 
 from coordinator.db import DatabaseError, connect, migrate
+from coordinator.repositories import SettingsRepo
 
 FIXED_APPLIED_AT = "2026-01-01T00:00:00+00:00"
 
@@ -168,6 +169,24 @@ def test_migration_002_drops_status_days_on_a_v5_shaped_db(tmp_path: pathlib.Pat
         conn.close()
 
 
+def test_migration_002_purges_stored_digest_time_setting(tmp_path: pathlib.Path) -> None:
+    """Upgrade path: a stored digest_time row is deleted, so the dropped dial stays dead."""
+    conn = connect(tmp_path / "upgrade.db")
+    _create_v5_schema(conn, FIXED_APPLIED_AT)
+    conn.execute("INSERT INTO settings (key, value) VALUES ('digest_time', '17:30')")
+    conn.commit()
+
+    migrate(conn, applied_at=FIXED_APPLIED_AT)
+
+    try:
+        # The dial must stay dead on upgraded stores too: with the row gone and the
+        # key out of DEFAULTS, the repo get raises KeyError (setting_get rejects it).
+        with pytest.raises(KeyError):
+            SettingsRepo(conn).get("digest_time")
+    finally:
+        conn.close()
+
+
 def test_migration_002_is_a_noop_on_a_fresh_v6_schema(tmp_path: pathlib.Path) -> None:
     """Fresh path: migration 001 never created status_days, so 002 must not raise."""
     conn = connect(tmp_path / "fresh.db")
@@ -190,9 +209,11 @@ def test_fresh_and_upgrade_paths_converge(tmp_path: pathlib.Path) -> None:
     migrate(fresh, applied_at=FIXED_APPLIED_AT)
 
     try:
-        # Effective-schema convergence: ALTER TABLE DROP COLUMN does not rewrite the
-        # stored CREATE TABLE text, so sqlite_master.sql can retain the dropped column
-        # on the upgrade path — the columns, as the engine sees them, are the contract.
+        # Effective-schema convergence: the columns, as the engine sees them, are the
+        # contract. A full sqlite_master.sql text comparison would be brittle here —
+        # the v5 fixture's stored DDL differs from schema.sql's in comments and
+        # whitespace. (ALTER TABLE DROP COLUMN itself does rewrite the stored text,
+        # so the upgrade path's members DDL is pinned below to carry no status_days.)
         for table in ("members", "checkins", "settings"):
             assert _column_names(upgraded, table) == _column_names(fresh, table)
         upgraded_tables = {
@@ -204,6 +225,14 @@ def test_fresh_and_upgrade_paths_converge(tmp_path: pathlib.Path) -> None:
             for row in fresh.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
         }
         assert upgraded_tables == fresh_tables
+        # ALTER TABLE DROP COLUMN rewrites the stored CREATE TABLE text: the upgraded
+        # store's members DDL must not even mention the dropped column.
+        upgraded_members_ddl = str(
+            upgraded.execute(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'members'"
+            ).fetchone()["sql"]
+        )
+        assert "status_days" not in upgraded_members_ddl
     finally:
         upgraded.close()
         fresh.close()
