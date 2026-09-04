@@ -32,7 +32,7 @@ This folder is the team's shared knowledge base. It lives on the Pi under
 
 ## Conflict note
 
-Two-way sync means simultaneous edits can conflict (rare by construction: humans
-edit from Drive, the bot writes from the Pi, usually different files). If the sync
-reports a conflict, **do not run `--resync` by hand** — follow
-`docs/howto/` (bisync recovery runbook) or ask the operator.
+Google Drive keeps built-in **version history** for every file, so simultaneous edits
+never destroy data — restore an earlier version from the Drive web UI if two people
+overwrite each other. The bot's uploads are versioned the same way. When in doubt,
+ask the operator.

@@ -2,8 +2,9 @@
 
 A clonable template that boots a **Telegram-based async project coordinator** on a
 Raspberry Pi 5: a Python coordinator plugin (SQLite-backed members, check-ins, and
-settings with UTC-anchored, timezone-safe cron scheduling), an rclone-bisynced Google
-Shared Drive knowledge base, and an OpenExecutive-derived operator persona.
+settings with UTC-anchored, timezone-safe cron scheduling), a Google Shared Drive
+knowledge base managed through Hermes' built-in google-workspace skill ($GAPI) with a
+local SQLite FTS5 index, and an OpenExecutive-derived operator persona.
 
 > 🚧 Under active development — Phase 0 (foundation) and Phase 1 (core bot) are
 > implemented; the Phase-1 manual gate is the current milestone. Knowledge sync
@@ -29,7 +30,10 @@ Shared Drive knowledge base, and an OpenExecutive-derived operator persona.
   `kanban_*` tools.
 - **Check-in & digest skills**, an operator persona (`prompts/persona.md` → `SOUL.md`),
   and a kanban board driven through Hermes' built-in tools.
-- **Google Shared Drive knowledge base** — rclone bisync wrapper ships in Phase 2.
+- **Google Shared Drive knowledge base (v6)** — the agent is the team's librarian:
+  `knowledge_sync` incrementally caches Drive documents into a local FTS5 index,
+  `knowledge_search` finds the right document, and agent-authored journals are
+  uploaded back via `$GAPI drive upload`. No rclone, no mirror, no host crontab.
 
 ## How it fits together
 
@@ -39,7 +43,8 @@ Telegram ⇄ hermes-agent gateway (Docker, network_mode: host — long-poll, no 
               ├─ coordinator plugin (this repo, src/coordinator — mounted read-only)
               │     └─ SQLite: data/hermes/hermes-coord.db (members / checkins / settings)
               ├─ cron: UTC-anchored jobs, cron.model pinned (jobs inherit)
-              └─ Google Shared Drive ⇄ data/project/  (rclone bisync — Phase 2)
+              └─ Google Drive ⇄ $GAPI (knowledge_sync / knowledge_search / upload)
+                    local FTS5 cache: hermes-coord.db · data/project/ = agent workspace
 ```
 
 The compose file builds
@@ -115,7 +120,7 @@ per-phase verification scripts in [`docs/verify/`](docs/verify/).
 |---|---|---|
 | 0 | Foundation (package, schema, scheduling, compose) | ✅ done |
 | 1 | Core bot (persona, skills, integration day-flow, Pi gate) | 🚧 manual gate |
-| 2 | Knowledge base (bisync `sync.sh`, doc templates, project seed) | ⬜ |
+| 2 | Member lifecycle & knowledge (v6 — door script, tools, Drive loop) | 🚧 |
 | 3 | Persona (toggle, triage rubric, third-party notices) | ⬜ |
 | 4 | Hardening (backup/restore, runbooks) | ⬜ |
 | 5 | Vector-RAG spike — feasibility notes only, deliberately deferred | ⬜ |
