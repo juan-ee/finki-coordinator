@@ -290,7 +290,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   list + description). Docs in the same commit: `prompts/persona.md` hard-rule 4
   gains the onboarding rule (door first; then the sender's ID completes the row).
 
-- [ ] **T2.9 — `member_delete` tool (D1)** — owner-only hard removal (tool 8/10):
+- [x] **T2.9 — `member_delete` tool (D1)** — owner-only hard removal (tool 8/10):
   `handlers.member_delete` (payload `{member_id}`) deletes the member's checkins rows
   then the member row in one transaction (FK enforcement fixes the order); returns
   `cron_relay {"action": "remove", "name": "checkin-<id>"}` when the row had a wake
@@ -843,6 +843,24 @@ Pi/human; the agent only produces/refreshes the verification script.
   a future-need trigger, not built: the add error summary points at member_update, so
   the gap is user-reachable); (4) casefold matching makes ß↔ss collide (stricter,
   defensible).
+- 2026-09-04 T2.9 — review verdict: standards axis 1 HARD (MembersRepo.delete was the
+  first multi-statement sequence on the shared worker-thread connection and added none
+  of the locking db.py's docstring pre-agreed, and had no rollback — a failed members
+  DELETE left the checkins DELETE pending for a later unrelated commit to persist);
+  spec axis 0 HARD + 3 judgement. ONE fresh fix round 41ad009: db.py gains module-level
+  WRITE_TRANSACTION_LOCK (RLock) that delete holds across both DELETEs + commit
+  (connect() docstring now points at it), rollback-on-sqlite3.Error re-raised so the
+  atomicity claim is true, and a deterministic ABORT-trigger test proves both member
+  row and checkins survive a failed delete with nothing pending (red→green);
+  wake⇒job docstring reworded as the documented assumption it is; stale "7 tool names"
+  docstring fixed; delta re-review: FIXED, no regressions; make check green (281).
+  Judgement calls: (1) owner-only remains persona-layer enforcement (the plugin has no
+  caller identity; technical enforcement = documented escalation, not scope); (2) the
+  wake⇒job heuristic can target a nonexistent job when a create relay never ran — same
+  assumption the pause/edit relays make, unverifiable from plugin state; (3) Notes-level
+  residues left: one stale "All 7 schemas" test docstring and the wiring tuple pinning
+  7/8 handler identities (member_delete covered via set equality) — cosmetic coverage
+  nit, tighten opportunistically.
 - 2026-09-04 T2.6 — review verdict: standards axis 2 HARD (the documented local-seed
   path was not actually gitignored — guidance claimed "gitignored" with no rule;
   multi-line test docstring vs rule 6); spec axis PASS with the gitignore gap as a
