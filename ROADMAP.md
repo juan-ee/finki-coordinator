@@ -316,7 +316,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   Notes: the recorded alternative for a digest dial (a `cron_relay` from
   `setting_set`) stays documented, not implemented.
 
-- [ ] **T2.11 — Remove `scripts/sync.sh` + its tests (D4)** — delete `scripts/sync.sh`
+- [x] **T2.11 — Remove `scripts/sync.sh` + its tests (D4)** — delete `scripts/sync.sh`
   and `tests/test_sync_smoke.py` in the same commit (`make check` stays green — rule 5).
   `prompts/skills/digest/SKILL.md` step 6 becomes the upload step ("upload the fresh
   journal entry to Drive via `$GAPI drive upload`; if the upload fails, say so in one
@@ -336,7 +336,9 @@ Pi/human; the agent only produces/refreshes the verification script.
   (renumber 1/6..6/6; docstring). `tests/test_setup_smoke.py` updated (no rclone
   artifacts; REQUIRED_ENV updated). `.env.example` loses the Google Drive section.
   README quickstart env list + Requirements Drive line updated ($GAPI; no local OAuth
-  files).
+  files) — INCLUDING the quickstart step-4 rclone.conf sentence (T2.11 routing) — plus
+  the `docker/README.md` mounts-table "rclone-bisynced project mirror" line (T2.11
+  routing, parity with the compose comment).
 
 - [ ] **T2.13 — Knowledge tables + chunker (D2)** — `schema.sql` gains `knowledge` +
   `knowledge_fts` exactly per proposal §1 (external-content FTS5,
@@ -879,6 +881,20 @@ Pi/human; the agent only produces/refreshes the verification script.
   residue: test_handlers.py:1033 docstring still says "the three DEFAULTS keys"
   (cosmetic, outside the fix mandate); (4) DROP COLUMN requires SQLite >= 3.35 — no
   floor asserted; older engines fail loudly and roll back (Pi/venv ship >= 3.37).
+- 2026-09-04 T2.11 — review verdict: standards axis 1 HARD (project-template/README.md
+  intro still promised the deleted bisync cadence — "two-way sync, roughly every 15-30
+  minutes and at container boot" — internally inconsistent with its own rewritten
+  conflict note, and invisible to T2.16's bisync/rclone keyword sweep); spec axis 0
+  HARD + 3 judgement. ONE fresh fix round 40779af rewrote the intro to the v6 Drive
+  story; delta re-review: FIXED, no regressions (whole-file keyword sweep clean); make
+  check green (271 — the 15 deleted sync tests account for the drop). Judgement calls:
+  (1) docker/README.md:57 "rclone-bisynced project mirror" routed explicitly into
+  T2.12's block (parity with the compose comment it already updates); (2) README
+  quickstart step-4 rclone.conf sentence routed into T2.12's README edits; (3) the
+  generate_agents_md.py bisync sentence stays T2.15-scoped (its golden tests are
+  rewritten there anyway); (4) docs/verify/phase2.md is the retired old gate — T2.17
+  rewrites it; (5) between this commit and the T2.17 gate the digest upload
+  instruction is doc-forward by design ($GAPI verified at the gate's FIRST item).
 - 2026-09-04 T2.6 — review verdict: standards axis 2 HARD (the documented local-seed
   path was not actually gitignored — guidance claimed "gitignored" with no rule;
   multi-line test docstring vs rule 6); spec axis PASS with the gitignore gap as a
