@@ -259,7 +259,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   (every committed `telegram_id` is None) replaces the current null-or-integer
   acceptance. Acceptance: `make check` green.
 
-- [ ] **T2.7 — `scripts/allow.sh` door script (D1)** — `scripts/allow.sh <id>...`:
+- [x] **T2.7 — `scripts/allow.sh` door script (D1)** — `scripts/allow.sh <id>...`:
   every arg must be numeric (digits only; otherwise usage + exit 2); loads repo-root
   `.env`; appends each ID missing from `TELEGRAM_ALLOWED_USERS` (comma-join; creates
   the line if absent; idempotent — a second run changes nothing); rewrites `.env`
@@ -811,6 +811,22 @@ Pi/human; the agent only produces/refreshes the verification script.
   ignored, so allow.sh edits the repo-root .env and applies with `docker compose up -d`
   (restart semantics unchanged either way). Leaked founder ID ([redacted-founder-id]) flagged to
   the owner per D3 — history purge is the owner's call, out of scope.
+- 2026-09-04 T2.7 — review verdict: spec axis 2 HARD (key-absent branch corrupted a
+  .env lacking a trailing newline — separator written before the content; the
+  spec-named EMPTY allowlist case was untested and aborted under bash 3.2 set -u);
+  standards axis 0 HARD + 4 judgement (empty-value crash, head -n 0 on BSD, the
+  .env.allow* temp file escaping .gitignore, duplicate-arg dupes). ONE fresh fix
+  round 4ea371f fixed all six (append order, :- guard, line-1 guard, .env.allow*
+  ignore, requested-ID dedup, never-restart rationale in output — the old dry-run
+  assertion over-pinned and was weakened to forbid only a suggested restart command);
+  delta re-review: FIXED, no regressions (bash 3.2 exercised for real — the suite
+  shell IS 3.2); make check green (269). Judgement calls: (1) existing non-numeric
+  tokens in the allowlist value are preserved as-is (only REQUESTED args are
+  validated) — owner data is never silently dropped; (2) the no-op run skips the
+  compose apply (idempotence means zero side effects, not just byte-equality);
+  (3) ALLOW_ENV_FILE knob mirrors the T0.13/T2.3 testability-knob precedent. Ops
+  note: the suite exercises bash 3.2 (macOS) while the Pi runs bash 5 — both now
+  covered by the guards.
 - 2026-09-04 T2.6 — review verdict: standards axis 2 HARD (the documented local-seed
   path was not actually gitignored — guidance claimed "gitignored" with no rule;
   multi-line test docstring vs rule 6); spec axis PASS with the gitignore gap as a
