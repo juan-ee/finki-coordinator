@@ -1,8 +1,10 @@
 # Project workspace
 
 This folder is the team's shared knowledge base. It lives on the Pi under
-`data/project/` and is kept in sync with the team's Google Shared Drive
-(two-way sync, roughly every 15–30 minutes and at container boot).
+`data/project/` and is the coordinator bot's workspace. Google Drive holds
+the team's shared documents — the record: the bot uploads its journals and
+digests there, and humans read and edit them in the browser. Drive's
+built-in version history protects edits.
 
 ## Folder map
 
