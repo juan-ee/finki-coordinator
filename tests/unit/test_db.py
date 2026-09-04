@@ -92,6 +92,7 @@ def test_migrate_records_versions_with_the_passed_timestamp(tmp_path: pathlib.Pa
         assert [(row["version"], row["applied_at"]) for row in rows] == [
             (1, FIXED_APPLIED_AT),
             (2, FIXED_APPLIED_AT),
+            (3, FIXED_APPLIED_AT),
         ]
     finally:
         conn.close()
@@ -109,6 +110,7 @@ def test_migrate_is_idempotent_on_double_call(tmp_path: pathlib.Path) -> None:
         assert [(row["version"], row["applied_at"]) for row in rows] == [
             (1, FIXED_APPLIED_AT),
             (2, FIXED_APPLIED_AT),
+            (3, FIXED_APPLIED_AT),
         ]
     finally:
         conn.close()

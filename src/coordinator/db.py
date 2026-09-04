@@ -13,6 +13,31 @@ _SCHEMA_SQL_PATH = Path(__file__).with_name("schema.sql")
 # created the column, which SQLite has no conditional DDL form for.
 MigrationScript = str | Callable[[sqlite3.Connection], None]
 
+# Migration 003 (D2): the knowledge cache + external-content FTS5 index. IF NOT EXISTS
+# forms — fresh stores create these tables in 001 (schema.sql carries the same DDL) and
+# no-op here; stores that predate the knowledge subsystem create them here. The engine
+# sees identical columns on both paths (convergence pinned by tests/test_db.py).
+_KNOWLEDGE_DDL = """
+CREATE TABLE IF NOT EXISTS knowledge (
+  chunk_id       INTEGER PRIMARY KEY,
+  file_id        TEXT NOT NULL,
+  path           TEXT NOT NULL,
+  title          TEXT NOT NULL,
+  heading        TEXT,
+  body           TEXT NOT NULL,
+  modified_time  TEXT NOT NULL,
+  fetched_at     TEXT NOT NULL,
+  UNIQUE(file_id, heading)
+);
+CREATE INDEX IF NOT EXISTS knowledge_file ON knowledge(file_id);
+CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
+  title, body,
+  content='knowledge',
+  content_rowid='chunk_id',
+  tokenize='unicode61 remove_diacritics 2'
+);
+"""
+
 
 def _migrate_002_drop_status_days(conn: sqlite3.Connection) -> None:
     """Drop the dead status_days column and purge the digest_time setting (v5 -> v6, D4)."""
@@ -36,10 +61,11 @@ WRITE_TRANSACTION_LOCK = threading.RLock()
 
 # Static ordered migrations; 001 applies the full schema.sql DDL (proposal.md §1);
 # 002 drops the v5 status_days column and purges the stored digest_time setting
-# (both no-ops on fresh v6 stores — they converge).
+# (both no-ops on fresh v6 stores — they converge); 003 adds the knowledge cache (D2).
 _MIGRATIONS: tuple[tuple[int, MigrationScript], ...] = (
     (1, _SCHEMA_SQL_PATH.read_text(encoding="utf-8")),
     (2, _migrate_002_drop_status_days),
+    (3, _KNOWLEDGE_DDL),
 )
 
 

@@ -1,10 +1,11 @@
-"""SQLite repositories for members, checkins and settings, plus handler-facing Protocols."""
+"""SQLite repositories for members, checkins, settings and the knowledge cache."""
 
 import sqlite3
 from dataclasses import dataclass
 from typing import Protocol
 
 from .db import WRITE_TRANSACTION_LOCK
+from .knowledge import Chunk
 
 _MEMBER_COLUMNS = (
     "SELECT id, name, telegram_id, timezone, wake, role, active, "
@@ -126,6 +127,43 @@ class SettingsRepository(Protocol):
 
     def set(self, key: str, value: str) -> None:
         """Insert or overwrite the stored value for key."""
+        ...
+
+
+@dataclass(frozen=True)
+class KnowledgeHit:
+    """One search result: the cached chunk's locator (rank is bm25, lower = better)."""
+
+    chunk_id: int
+    file_id: str
+    path: str
+    title: str
+    heading: str | None
+    rank: float
+
+
+class KnowledgeRepository(Protocol):
+    """Handler-facing contract for the knowledge cache (Drive is the record; D2)."""
+
+    def replace_file(
+        self,
+        *,
+        file_id: str,
+        path: str,
+        title: str,
+        modified_time: str,
+        fetched_at: str,
+        chunks: list[Chunk],
+    ) -> int:
+        """Rewrite one file's cache rows and FTS entries; return the chunk count."""
+        ...
+
+    def watermark(self) -> str | None:
+        """Return MAX(modified_time) over cached rows (None when the cache is empty)."""
+        ...
+
+    def search(self, query: str, limit: int) -> list[KnowledgeHit]:
+        """Return the top FTS5 hits (bm25, title 10:1 over body) for the query."""
         ...
 
 
@@ -346,3 +384,87 @@ class SettingsRepo:
             (key, value),
         )
         self._conn.commit()
+
+
+class KnowledgeRepo:
+    """SQLite-backed knowledge cache with an external-content FTS5 index (D2).
+
+    The sync owns ALL writes to knowledge/knowledge_fts: per-file reindex is
+    FTS delete -> row delete -> row insert -> FTS insert, under the shared write
+    lock, one commit. Drive is the record; every row is rebuildable from it.
+    """
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        """Bind the repository to an open, migrated connection."""
+        self._conn = conn
+
+    def replace_file(
+        self,
+        *,
+        file_id: str,
+        path: str,
+        title: str,
+        modified_time: str,
+        fetched_at: str,
+        chunks: list[Chunk],
+    ) -> int:
+        """Rewrite one file's cache rows and FTS entries; return the chunk count."""
+        with WRITE_TRANSACTION_LOCK:
+            try:
+                self._conn.execute(
+                    "DELETE FROM knowledge_fts WHERE rowid IN"
+                    " (SELECT chunk_id FROM knowledge WHERE file_id = ?)",
+                    (file_id,),
+                )
+                self._conn.execute("DELETE FROM knowledge WHERE file_id = ?", (file_id,))
+                for chunk in chunks:
+                    cursor = self._conn.execute(
+                        "INSERT INTO knowledge (file_id, path, title, heading, body,"
+                        " modified_time, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            file_id,
+                            path,
+                            title,
+                            chunk.heading,
+                            chunk.body,
+                            modified_time,
+                            fetched_at,
+                        ),
+                    )
+                    self._conn.execute(
+                        "INSERT INTO knowledge_fts(rowid, title, body) VALUES (?, ?, ?)",
+                        (cursor.lastrowid, title, chunk.body),
+                    )
+                self._conn.commit()
+            except sqlite3.Error:
+                self._conn.rollback()
+                raise
+        return len(chunks)
+
+    def watermark(self) -> str | None:
+        """Return MAX(modified_time) over cached rows (None when the cache is empty)."""
+        row = self._conn.execute("SELECT MAX(modified_time) AS m FROM knowledge").fetchone()
+        return None if row is None or row["m"] is None else str(row["m"])
+
+    def search(self, query: str, limit: int) -> list[KnowledgeHit]:
+        """FTS5 MATCH ordered by bm25 (title 10:1 over body); top limit hits."""
+        rows = self._conn.execute(
+            "SELECT k.chunk_id AS chunk_id, k.file_id AS file_id, k.path AS path,"
+            " k.title AS title, k.heading AS heading,"
+            " bm25(knowledge_fts, 10.0, 1.0) AS bm25_rank"
+            " FROM knowledge_fts JOIN knowledge AS k ON k.chunk_id = knowledge_fts.rowid"
+            " WHERE knowledge_fts MATCH ?"
+            " ORDER BY bm25_rank LIMIT ?",
+            (query, limit),
+        ).fetchall()
+        return [
+            KnowledgeHit(
+                chunk_id=int(row["chunk_id"]),
+                file_id=str(row["file_id"]),
+                path=str(row["path"]),
+                title=str(row["title"]),
+                heading=_nullable_str(row, "heading"),
+                rank=float(row["bm25_rank"]),
+            )
+            for row in rows
+        ]
