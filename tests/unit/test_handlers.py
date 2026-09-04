@@ -327,6 +327,7 @@ def test_member_add_rejects_duplicate_active_name() -> None:
     )
 
     assert result["ok"] is False
+    assert "member 1" in result["summary"]  # the summary names the existing row id
     assert "member_update" in result["summary"]
     assert result["cron_relay"] is None
     assert len(members.list(active=1)) == 1  # no second row inserted
@@ -351,6 +352,7 @@ def test_member_add_rejects_duplicate_active_name_case_insensitive() -> None:
     )
 
     assert result["ok"] is False
+    assert "member 1" in result["summary"]  # the summary names the existing row id
     assert "member_update" in result["summary"]
     assert len(members.list(active=1)) == 1
 

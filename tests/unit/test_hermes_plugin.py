@@ -289,6 +289,27 @@ def test_schemas_mirror_handler_payload_fields_exactly() -> None:
         assert sorted(schema["required"]) == sorted(required), tool
 
 
+def test_member_add_description_pins_telegram_id_source_and_duplicate_rule() -> None:
+    """The member_add description tells the model how to source telegram_id (T2.8).
+
+    The required list alone cannot say WHERE the value comes from or what to do on a
+    collision: the description — the single source register_tools() injects into the
+    registered schema as schema["description"] (T1.8), the text the model actually
+    sees — must name the telegram_id requirement, its source (the sender's session
+    context), and the duplicate-active-name rejection with its remedy. Reverting the
+    description to the pre-T2.8 text ("Add an active member (name, timezone, wake);
+    returns the create relay...") fails every assertion below.
+    """
+    description = TOOL_SPECS["member_add"]["description"]
+
+    assert "telegram_id" in description
+    assert "required" in description.lower()
+    assert "session context" in description
+    assert "duplicate active" in description.lower()
+    assert "rejected" in description.lower()
+    assert "update the existing row" in description
+
+
 # --- dispatch wiring ------------------------------------------------------------------
 
 
