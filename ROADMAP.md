@@ -326,7 +326,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   item) — between T2.11 and the gate the digest upload instruction is doc-forward by
   design.
 
-- [ ] **T2.12 — Drive env + rclone cleanup (D4)** — `docker-compose.yml` drops the six
+- [x] **T2.12 — Drive env + rclone cleanup (D4)** — `docker-compose.yml` drops the six
   Drive/rclone env passthroughs (comments updated: Drive access is $GAPI with a
   skill-managed credential; `data/project/` is the agent workspace, not a mirror).
   `tests/test_compose.py` FIRST gains the env set-equality drift guard (rendered
@@ -895,6 +895,17 @@ Pi/human; the agent only produces/refreshes the verification script.
   rewritten there anyway); (4) docs/verify/phase2.md is the retired old gate — T2.17
   rewrites it; (5) between this commit and the T2.17 gate the digest upload
   instruction is doc-forward by design ($GAPI verified at the gate's FIRST item).
+- 2026-09-04 T2.12 — review verdict: spec PASS (red-first proven: swapping back the
+  pre-T2.12 compose makes the drift guard fail listing exactly the six legacy keys);
+  standards 0 HARD + 3 judgement. Judgement calls: (1) LEGACY_DRIVE_VARS scrub set
+  kept in test_compose.py — speculative-generality flagged but retained as rule-7
+  defense-in-depth at zero cost (prevents a dev's exported legacy Drive secrets from
+  reaching render/test output); (2) docker/README.md mount cell omits the compose
+  comment's "$GAPI upload, not mirrored" clause — phrasing parity only, substance
+  fixed; (3) doc-forward pointers (.env.example "phase-2 gate's FIRST item") stay
+  temporarily stale until T2.17 writes the gate — same doc-forward-by-design class as
+  T2.11 note (5); (4) Notes-level residue: test_setup_smoke.py:2 module docstring
+  still says "step 7" after the 7->6 renumber (one-word cosmetic).
 - 2026-09-04 T2.6 — review verdict: standards axis 2 HARD (the documented local-seed
   path was not actually gitignored — guidance claimed "gitignored" with no rule;
   multi-line test docstring vs rule 6); spec axis PASS with the gitignore gap as a
