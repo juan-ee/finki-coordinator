@@ -268,7 +268,7 @@ def test_every_schema_is_well_formed() -> None:
 
 
 def test_tool_specs_cover_exactly_the_eight_tools() -> None:
-    """TOOL_SPECS has exactly the 7 tool names, each wired to its handlers.py function."""
+    """TOOL_SPECS has exactly the eight tool names, each wired to its handlers.py function."""
     assert set(TOOL_SPECS) == TOOL_NAMES
     for name, handler in (
         ("member_add", handlers.member_add),

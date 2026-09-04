@@ -72,6 +72,32 @@ def test_member_delete_unknown_id_returns_false(conn: sqlite3.Connection) -> Non
     assert members.delete(4242) is False
 
 
+def test_member_delete_failure_rolls_back_the_whole_cascade(
+    conn: sqlite3.Connection,
+) -> None:
+    """A members-DELETE failure (trigger RAISE(ABORT)) rolls the cascade back entirely.
+
+    The checkins DELETE that already ran must not survive as a pending change that a
+    later unrelated commit on the shared connection could persist: after the failed
+    delete, both the member row and its check-ins are still there.
+    """
+    members, checkins, _ = _repos(conn)
+    added = members.add(name="Alice", created_at=FIXED_CREATED_AT)
+    checkins.submit(member_id=added.id, date="2026-02-01", done="d", created_at=FIXED_CREATED_AT)
+    conn.execute(
+        "CREATE TRIGGER refuse_member_delete BEFORE DELETE ON members"
+        " BEGIN SELECT RAISE(ABORT, 'member delete refused'); END"
+    )
+    conn.commit()
+
+    with pytest.raises(sqlite3.Error):
+        members.delete(added.id)
+    conn.commit()  # a later, unrelated commit must not persist the aborted cascade
+
+    assert members.get(added.id) is not None
+    assert len(checkins.by_date("2026-02-01")) == 1
+
+
 def test_member_add_then_get_round_trips_every_column(conn: sqlite3.Connection) -> None:
     """add stores every column and get returns an equal Member carrying a fresh id."""
     members, _, _ = _repos(conn)

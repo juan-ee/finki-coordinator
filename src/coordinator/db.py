@@ -1,9 +1,20 @@
 """SQLite connection factory (WAL, busy timeout, FK enforcement) and versioned migrations."""
 
 import sqlite3
+import threading
 from pathlib import Path
 
 _SCHEMA_SQL_PATH = Path(__file__).with_name("schema.sql")
+
+# Worker threads share the one runtime connection (see connect() below): SQLite's
+# serialized mode keeps individual statements from tearing, but it does not make a
+# multi-statement write sequence atomic against other threads — a concurrent commit
+# on the shared connection could land between the sequence's statements and persist
+# its partial, uncommitted writes. Any multi-statement write sequence on the shared
+# connection must therefore hold this lock across its whole statements+commit span
+# (MembersRepo.delete's cascade is the first such sequence); single-statement
+# execute+commit handlers need no lock.
+WRITE_TRANSACTION_LOCK = threading.RLock()
 
 # Static ordered migrations; 001 applies the full schema.sql DDL (proposal.md §1).
 _MIGRATIONS: tuple[tuple[int, str], ...] = ((1, _SCHEMA_SQL_PATH.read_text(encoding="utf-8")),)
@@ -22,7 +33,7 @@ def connect(path: str | Path) -> sqlite3.Connection:
     upstream Hermes invokes tool handlers from worker threads. Intra-connection safety
     rests on SQLite serialized mode (sqlite3.threadsafety == 3 on CPython default builds:
     statements cannot interleave or tear) plus handlers keeping to short single-statement
-    transactions — a future multi-statement handler sequence must add its own locking.
+    transactions — a multi-statement write sequence must hold WRITE_TRANSACTION_LOCK.
     busy_timeout=5000 guards cross-connection contention (init_db, second processes).
     """
     try:

@@ -4,6 +4,8 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Protocol
 
+from .db import WRITE_TRANSACTION_LOCK
+
 _MEMBER_COLUMNS = (
     "SELECT id, name, telegram_id, timezone, wake, role, status_days, active, "
     "created_at, updated_at FROM members"
@@ -265,12 +267,19 @@ class MembersRepo:
         """Remove the member's check-ins then the member (one commit); True when removed.
 
         FK enforcement (foreign_keys=ON) fixes the order: checkins first. Both DELETEs
-        share the caller's implicit transaction and commit together, so the cascade is
-        atomic — a failure leaves both tables untouched.
+        run as one write transaction held under WRITE_TRANSACTION_LOCK (worker threads
+        share this connection, so a multi-statement sequence must not interleave with
+        another thread's commit); any sqlite3.Error rolls the transaction back and
+        re-raises, so the cascade is atomic — a failure leaves both tables untouched.
         """
-        self._conn.execute("DELETE FROM checkins WHERE member_id = ?", (member_id,))
-        cursor = self._conn.execute("DELETE FROM members WHERE id = ?", (member_id,))
-        self._conn.commit()
+        with WRITE_TRANSACTION_LOCK:
+            try:
+                self._conn.execute("DELETE FROM checkins WHERE member_id = ?", (member_id,))
+                cursor = self._conn.execute("DELETE FROM members WHERE id = ?", (member_id,))
+                self._conn.commit()
+            except sqlite3.Error:
+                self._conn.rollback()
+                raise
         return cursor.rowcount > 0
 
     def list(self, *, active: int | None = None) -> list[Member]:

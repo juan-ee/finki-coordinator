@@ -423,9 +423,12 @@ def member_delete(
     """Hard-remove a member (owner-only) and relay removal of their check-in cron job.
 
     D1: the repo's delete cascades the member's check-ins in the same commit. The
-    cron_relay carries job removal only when the row had a wake (wake implies a
-    checkin-<id> job was created at onboarding); a wake-less row never had a job,
-    and the contract keeps cron_relay None when no schedule changed.
+    cron_relay carries job removal only when the row had a wake: the documented
+    assumption is that onboarding created a checkin-<id> job for such rows — job
+    creation is the agent's member_add relay, not transactional with the row, so it
+    cannot be verified from plugin state; if it never ran, the remove targets a
+    nonexistent job, the same assumption the pause/edit relays make. A wake-less row
+    never had a job, and the contract keeps cron_relay None when no schedule changed.
     """
     error = _reject_unknown(payload, _DELETE_FIELDS) or _require_int(payload, "member_id")
     if error is not None:
