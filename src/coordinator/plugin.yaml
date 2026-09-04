@@ -13,6 +13,7 @@ provides_tools:
   - member_add
   - member_update
   - member_list
+  - member_delete
   - checkin_submit
   - checkins_by_date
   - setting_get

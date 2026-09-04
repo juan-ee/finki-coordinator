@@ -34,6 +34,7 @@ from .handlers import (
     checkin_submit,
     checkins_by_date,
     member_add,
+    member_delete,
     member_list,
     member_update,
     setting_get,
@@ -134,6 +135,21 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
             "additionalProperties": False,
         },
         "handler": member_list,
+        "toolset": "coordinator",
+    },
+    "member_delete": {
+        "description": (
+            "Owner-only: permanently remove a member row and their check-ins, and relay"
+            " removal of their check-in cron job. member_update(active=0) is the"
+            " reversible alternative."
+        ),
+        "schema": {
+            "type": "object",
+            "properties": {"member_id": {"type": "integer"}},
+            "required": ["member_id"],
+            "additionalProperties": False,
+        },
+        "handler": member_delete,
         "toolset": "coordinator",
     },
     "checkin_submit": {

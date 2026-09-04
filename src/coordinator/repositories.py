@@ -88,6 +88,10 @@ class MembersRepository(Protocol):
         """Return one member by id, including inactive rows (None if absent)."""
         ...
 
+    def delete(self, member_id: int) -> bool:
+        """Remove the member and their check-ins (one commit); True when a row went."""
+        ...
+
     def list(self, *, active: int | None = None) -> list[Member]:
         """Return members ordered by name, optionally filtered to the given active flag."""
         ...
@@ -256,6 +260,18 @@ class MembersRepo:
         """Return one member by id, including inactive rows (None if absent)."""
         row = self._conn.execute(_MEMBER_COLUMNS + " WHERE id = ?", (member_id,)).fetchone()
         return None if row is None else _member_from_row(row)
+
+    def delete(self, member_id: int) -> bool:
+        """Remove the member's check-ins then the member (one commit); True when removed.
+
+        FK enforcement (foreign_keys=ON) fixes the order: checkins first. Both DELETEs
+        share the caller's implicit transaction and commit together, so the cascade is
+        atomic — a failure leaves both tables untouched.
+        """
+        self._conn.execute("DELETE FROM checkins WHERE member_id = ?", (member_id,))
+        cursor = self._conn.execute("DELETE FROM members WHERE id = ?", (member_id,))
+        self._conn.commit()
+        return cursor.rowcount > 0
 
     def list(self, *, active: int | None = None) -> list[Member]:
         """Return members ordered by name, optionally filtered to the given active flag."""

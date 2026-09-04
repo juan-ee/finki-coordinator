@@ -44,6 +44,7 @@ _UPDATE_FIELDS = frozenset(
     {"member_id", "wake", "active", "timezone", "role", "name", "telegram_id"}
 )
 _LIST_FIELDS = frozenset({"active"})
+_DELETE_FIELDS = frozenset({"member_id"})
 _SUBMIT_FIELDS = frozenset({"member_id", "date", "done", "next", "blockers", "source"})
 _DATE_FIELDS = frozenset({"date"})
 _KEY_FIELDS = frozenset({"key"})
@@ -410,6 +411,39 @@ def member_list(
     ]
     data: dict[str, object] = {"members": members_data}  # telegram_id deliberately omitted
     return _result(True, f"{len(rows)} member(s) listed (active={wanted})", None, data)
+
+
+def member_delete(
+    payload: dict[str, object],
+    members: MembersRepository,
+    checkins: CheckinsRepository,
+    settings: SettingsRepository,
+    clock: Clock,
+) -> dict[str, object]:
+    """Hard-remove a member (owner-only) and relay removal of their check-in cron job.
+
+    D1: the repo's delete cascades the member's check-ins in the same commit. The
+    cron_relay carries job removal only when the row had a wake (wake implies a
+    checkin-<id> job was created at onboarding); a wake-less row never had a job,
+    and the contract keeps cron_relay None when no schedule changed.
+    """
+    error = _reject_unknown(payload, _DELETE_FIELDS) or _require_int(payload, "member_id")
+    if error is not None:
+        return _fail(error)
+    member_id = cast("int", payload["member_id"])
+    member = members.get(member_id)
+    if member is None:
+        return _fail(f"unknown member {member_id}: use member_list for valid ids")
+
+    members.delete(member_id)
+    if member.wake is not None:
+        relay = _cron_relay({"action": "remove", "name": f"checkin-{member_id}"})
+        summary = f"{member.name} removed; check-in job checkin-{member_id} removed"
+    else:
+        relay = None
+        summary = f"{member.name} removed (no check-in job existed)"
+    data: dict[str, object] = {"member_id": member_id}
+    return _result(True, summary, relay, data)
 
 
 def checkin_submit(

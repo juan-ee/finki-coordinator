@@ -16,6 +16,7 @@ from coordinator.handlers import (
     checkin_submit,
     checkins_by_date,
     member_add,
+    member_delete,
     member_list,
     member_update,
     setting_get,
@@ -48,9 +49,10 @@ class FakeClock:
 class FakeMembers:
     """Dict-backed MembersRepository fake mirroring MembersRepo (None = leave unchanged)."""
 
-    def __init__(self) -> None:
+    def __init__(self, checkins: "FakeCheckins | None" = None) -> None:
         self._rows: dict[int, Member] = {}
         self._next_id = 1
+        self._checkins = checkins  # cascade mirror of the real MembersRepo.delete contract
 
     def add(
         self,
@@ -118,6 +120,15 @@ class FakeMembers:
         """Return one member by id, including inactive rows (None if absent)."""
         return self._rows.get(member_id)
 
+    def delete(self, member_id: int) -> bool:
+        """Remove the member and their check-ins (mirroring MembersRepo.delete); bool result."""
+        if member_id not in self._rows:
+            return False
+        del self._rows[member_id]
+        if self._checkins is not None:
+            self._checkins.drop_member(member_id)
+        return True
+
     def list(self, *, active: int | None = None) -> list[Member]:
         """Return members ordered by name, optionally filtered to the given active flag."""
         rows = list(self._rows.values())
@@ -164,6 +175,11 @@ class FakeCheckins:
         rows = [row for (_member_id, day), row in self._rows.items() if day == date]
         return sorted(rows, key=lambda row: row.member_id)
 
+    def drop_member(self, member_id: int) -> None:
+        """Discard every check-in belonging to member_id (cascade helper for fakes)."""
+        for key in [key for key in self._rows if key[0] == member_id]:
+            del self._rows[key]
+
 
 class FakeSettings:
     """Dict-backed SettingsRepository fake mirroring SettingsRepo (DEFAULTS fallback)."""
@@ -186,9 +202,11 @@ def _wire(
     clock: FakeClock | None = None,
 ) -> tuple[MembersRepository, CheckinsRepository, SettingsRepository, FakeClock]:
     """Build a fresh fake stack typed as the handler Protocols — the DIP seam under test."""
+    checkins = FakeCheckins()
+    members = FakeMembers(checkins=checkins)
     return (
-        FakeMembers(),
-        FakeCheckins(),
+        members,
+        checkins,
         FakeSettings(),
         clock if clock is not None else FakeClock(),
     )
@@ -482,7 +500,68 @@ def test_member_add_rejects_wrong_types(field: str, value: object) -> None:
     assert result["cron_relay"] is None
 
 
-# --- member_update -------------------------------------------------------------------
+# --- member_delete --------------------------------------------------------------------
+
+
+def test_member_delete_removes_row_checkins_and_relays_job_removal() -> None:
+    """D1: hard removal — row and check-ins gone, the exact job-remove relay returned."""
+    members, checkins, settings, clock = _wire()
+    _seed_member(members)
+    checkins.submit(
+        member_id=1,
+        date="2026-01-15",
+        done="d",
+        next="n",
+        blockers=None,
+        source="auto",
+        created_at=AT_NOON.isoformat(),
+    )
+
+    result = member_delete({"member_id": 1}, members, checkins, settings, clock)
+
+    assert result["ok"] is True
+    assert result["cron_relay"] == {
+        "tool": "cronjob",
+        "args": {"action": "remove", "name": "checkin-1"},
+    }
+    assert result["data"] == {"member_id": 1}
+    assert "removed" in result["summary"]
+    assert members.get(1) is None
+    assert checkins.by_date("2026-01-15") == []
+
+
+def test_member_delete_unknown_id_fails_actionably() -> None:
+    """An unknown member id fails naming member_list; no relay, nothing removed."""
+    members, checkins, settings, clock = _wire()
+
+    result = member_delete({"member_id": 99}, members, checkins, settings, clock)
+
+    assert result["ok"] is False
+    assert "member_list" in result["summary"]
+    assert result["cron_relay"] is None
+
+
+def test_member_delete_wakeless_row_relays_nothing() -> None:
+    """A wake-less row never had a job: no relay (cron_relay only when a schedule changed)."""
+    members, checkins, settings, clock = _wire()
+    members.add(
+        name="NoJob",
+        telegram_id=55,
+        timezone="UTC",
+        wake=None,
+        role=None,
+        active=1,
+        created_at=AT_NOON.isoformat(),
+    )
+
+    result = member_delete({"member_id": 1}, members, checkins, settings, clock)
+
+    assert result["ok"] is True
+    assert result["cron_relay"] is None
+    assert "removed" in result["summary"]
+
+
+# --- member_update --------------------------------------------------------------------
 
 
 def test_member_update_wake_change_relays_edit_exactly() -> None:

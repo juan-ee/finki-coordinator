@@ -35,6 +35,43 @@ def _repos(conn: sqlite3.Connection) -> tuple[MembersRepo, CheckinsRepo, Setting
     return MembersRepo(conn), CheckinsRepo(conn), SettingsRepo(conn)
 
 
+def test_member_delete_removes_member_and_checkins(conn: sqlite3.Connection) -> None:
+    """delete cascades the member's check-ins then removes the row; True when removed."""
+    members, checkins, _ = _repos(conn)
+    added = members.add(
+        name="Alice",
+        telegram_id=101,
+        timezone="America/Guayaquil",
+        wake="08:00",
+        role=None,
+        status_days=None,
+        active=1,
+        created_at=FIXED_CREATED_AT,
+    )
+    checkins.submit(
+        member_id=added.id,
+        date="2026-02-01",
+        done="d",
+        next="n",
+        blockers=None,
+        source="auto",
+        created_at=FIXED_CREATED_AT,
+    )
+
+    removed = members.delete(added.id)
+
+    assert removed is True
+    assert members.get(added.id) is None
+    assert checkins.by_date("2026-02-01") == []
+
+
+def test_member_delete_unknown_id_returns_false(conn: sqlite3.Connection) -> None:
+    """delete on an absent id is a False no-op, not an error."""
+    members, _, _ = _repos(conn)
+
+    assert members.delete(4242) is False
+
+
 def test_member_add_then_get_round_trips_every_column(conn: sqlite3.Connection) -> None:
     """add stores every column and get returns an equal Member carrying a fresh id."""
     members, _, _ = _repos(conn)

@@ -30,6 +30,7 @@ TOOL_NAMES = frozenset(
         "member_add",
         "member_update",
         "member_list",
+        "member_delete",
         "checkin_submit",
         "checkins_by_date",
         "setting_get",
@@ -62,6 +63,7 @@ EXPECTED_FIELDS: dict[str, tuple[dict[str, str], list[str]]] = {
         ["member_id"],
     ),
     "member_list": ({"active": "integer"}, []),
+    "member_delete": ({"member_id": "integer"}, ["member_id"]),
     "checkin_submit": (
         {
             "member_id": "integer",
@@ -233,7 +235,7 @@ def _wire() -> tuple[MembersRepository, CheckinsRepository, SettingsRepository, 
 # --- register_tools -------------------------------------------------------------------
 
 
-def test_register_tools_records_exactly_seven_registrations() -> None:
+def test_register_tools_records_exactly_eight_registrations() -> None:
     """register_tools() calls ctx.register_tool once per TOOL_SPECS entry, all coordinator."""
     ctx = FakeCtx()
     members, checkins, settings, clock = _wire()
@@ -243,7 +245,7 @@ def test_register_tools_records_exactly_seven_registrations() -> None:
     )
 
     names = [call["name"] for call in ctx.calls]
-    assert len(ctx.calls) == 7
+    assert len(ctx.calls) == 8
     assert set(names) == TOOL_NAMES
     assert len(set(names)) == len(names)  # exactly one registration per tool
     assert all(call["toolset"] == "coordinator" for call in ctx.calls)
@@ -265,7 +267,7 @@ def test_every_schema_is_well_formed() -> None:
         assert schema["additionalProperties"] is False, name
 
 
-def test_tool_specs_cover_exactly_the_seven_tools() -> None:
+def test_tool_specs_cover_exactly_the_eight_tools() -> None:
     """TOOL_SPECS has exactly the 7 tool names, each wired to its handlers.py function."""
     assert set(TOOL_SPECS) == TOOL_NAMES
     for name, handler in (
@@ -324,7 +326,7 @@ def test_registered_schemas_carry_the_model_facing_description() -> None:
     members, checkins, settings, clock = _wire()
     register_tools(ctx, members=members, checkins=checkins, settings=settings, clock=clock)
 
-    assert len(ctx.calls) == 7
+    assert len(ctx.calls) == 8
     for call in ctx.calls:
         schema = call["schema"]
         assert isinstance(schema, dict), call["name"]
@@ -381,7 +383,7 @@ def test_dispatch_unknown_tool_raises_keyerror() -> None:
 
     with pytest.raises(KeyError, match="unknown tool"):
         dispatch(
-            "member_delete",
+            "member_purge",
             {},
             members=members,
             checkins=checkins,
@@ -469,4 +471,4 @@ def test_module_imports_with_hermes_absent() -> None:
 
     assert module is hermes_plugin
     assert "hermes" not in sys.modules  # the adapter pulled in no Hermes at import time
-    assert len(TOOL_SPECS) == 7
+    assert len(TOOL_SPECS) == 8

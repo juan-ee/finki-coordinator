@@ -43,8 +43,8 @@ MANIFEST_SCHEMA: dict[str, object] = {
         "kind": {"const": "standalone"},
         "provides_tools": {
             "type": "array",
-            "minItems": 7,
-            "maxItems": 7,
+            "minItems": 8,
+            "maxItems": 8,
             "uniqueItems": True,
             "items": {"type": "string", "pattern": r"^[a-z][a-z_]*$"},
         },
