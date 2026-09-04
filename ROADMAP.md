@@ -304,7 +304,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   (8 registrations, schema). Docs in the same commit: persona rule 4 mention; README
   tool line (8).
 
-- [ ] **T2.10 — Dead weight: `status_days` + `digest_time` (D4)** — versioned
+- [x] **T2.10 — Dead weight: `status_days` + `digest_time` (D4)** — versioned
   migration 002 drops `members.status_days`; `db._MIGRATIONS` gains
   callable-migration support (guarded drop: fresh v6 DBs — which never had the column —
   no-op; v5 DBs converge) + a convergence test (fresh-path and upgrade-path
@@ -861,6 +861,24 @@ Pi/human; the agent only produces/refreshes the verification script.
   residues left: one stale "All 7 schemas" test docstring and the wiring tuple pinning
   7/8 handler identities (member_delete covered via set equality) — cosmetic coverage
   nit, tighten opportunistically.
+- 2026-09-04 T2.10 — review verdict: standards axis 0 HARD + 4 judgement, spec axis
+  0 HARD + 3 judgement; the cross-axis flagship — the dropped digest_time KEY survived
+  as a stored settings ROW on upgraded stores, so setting_get answered it there while
+  fresh stores rejected it (schema converged, behavior did not) — was arbitrated fix-
+ worthy: fix round c814dc5 purges the row inside migration 002's guarded transaction
+  (red-verified end-to-end), corrects the convergence-test comment (DROP COLUMN does
+  rewrite stored DDL; the real reason for table_info comparison is fixture-DDL
+  formatting), strengthens the test to assert status_days absent from the upgraded
+  stored members DDL, and fixes the "three keys" docstring; delta re-review: FIXED, no
+  regressions; make check green (286). Judgement calls: (1) proposal.md:248 comment
+  de-dial edit was outside the task block's named files — covered by the v6-wide
+  proposal-sanction recorded at T2.5/T2.16, disclosed here; (2) convergence is asserted
+  on engine-visible columns + table sets, not sqlite_master.sql text (fixture DDL
+  formatting differs from schema.sql; text comparison brittle) — deviation from the
+  block's literal "sqlite_master identical", documented in the test; (3) Notes-level
+  residue: test_handlers.py:1033 docstring still says "the three DEFAULTS keys"
+  (cosmetic, outside the fix mandate); (4) DROP COLUMN requires SQLite >= 3.35 — no
+  floor asserted; older engines fail loudly and roll back (Pi/venv ship >= 3.37).
 - 2026-09-04 T2.6 — review verdict: standards axis 2 HARD (the documented local-seed
   path was not actually gitignored — guidance claimed "gitignored" with no rule;
   multi-line test docstring vs rule 6); spec axis PASS with the gitignore gap as a
