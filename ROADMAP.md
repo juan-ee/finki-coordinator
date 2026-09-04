@@ -346,7 +346,10 @@ Pi/human; the agent only produces/refreshes the verification script.
   markdown `##` section (`###` content stays inside its `##` chunk), leading
   preamble = one NULL-heading chunk, heading-less documents = one chunk, no overlap;
   duplicate headings disambiguated with an occurrence suffix so
-  `UNIQUE(file_id, heading)` holds (documented interpretation). `repositories.py`:
+  `UNIQUE(file_id, heading)` holds (documented interpretation); **non-text documents**
+  (audit second-pass rule): ingested with NO content → one cache row, empty body —
+  title/path only, the index never pretends to hold text it cannot reliably extract.
+  `repositories.py`:
   `KnowledgeRepository` Protocol + SQLite impl — `replace_file(...)` (per-file
   reindex: FTS delete → row delete → row insert → FTS insert), `watermark()` =
   `MAX(modified_time)` (derived state; nothing for the agent to clobber),
@@ -360,12 +363,14 @@ Pi/human; the agent only produces/refreshes the verification script.
   (pure core; no network, no new deps): call 1 `{}` (plan) →
   `data: {watermark, files_hint}` — the agent lists the Drive root via `$GAPI`,
   filters files with `modifiedTime` past the watermark, downloads those; call 2
-  `{files: [{file_id, path, title, modified_time, content}, ...]}` (ingest) → chunk +
-  `replace_file` each, advance the watermark, `data: {synced, watermark}`. Malformed
-  entries → ok:False actionable; empty ingest → ok:True no-op. TOOL_SPECS entry
-  (tool 9/10) with the protocol in the description. Tests FIRST: plan-mode watermark;
-  ingest chunks+stores+advances; re-ingest of the same file is idempotent; malformed
-  batch rejected. README tool line (9).
+  `{files: [{file_id, path, title, modified_time, content}, ...]}` (ingest; `content`
+  optional — absent = non-text file, title/path-only row per the audit second-pass
+  rule) → chunk + `replace_file` each, advance the watermark, `data: {synced,
+  watermark}`. Malformed entries → ok:False actionable; empty ingest → ok:True no-op.
+  TOOL_SPECS entry (tool 9/10) with the protocol in the description. Tests FIRST:
+  plan-mode watermark; ingest chunks+stores+advances; non-text ingest stores one
+  empty-body row; re-ingest of the same file is idempotent; malformed batch rejected.
+  README tool line (9).
 
 - [ ] **T2.15 — `knowledge_search` tool + query map (D2)** —
   `handlers.knowledge_search` (`query` required non-empty; optional `limit` default

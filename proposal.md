@@ -308,7 +308,11 @@ Google Drive (the record — team-edited):     data/project/ (agent workspace, l
   `bm25()` ranking with title weighted 10:1 above body, one chunk per markdown `##`
   section (heading-less documents = one chunk; duplicate headings get an occurrence
   suffix so `UNIQUE(file_id, heading)` holds), no overlap, no embeddings, no prefix
-  indexes — YAGNI until a real query misses. `INSERT INTO knowledge_fts(knowledge_fts)
+  indexes — YAGNI until a real query misses. **Non-text documents** (PDFs, binaries,
+  Google-native exports): index title/path only — the agent extracts content on live
+  read (Hermes' document extraction is agent-side; a plugin tool cannot borrow it, so
+  the index never pretends to hold text it cannot reliably extract).
+  `INSERT INTO knowledge_fts(knowledge_fts)
   VALUES('integrity-check')` is the phase-gate verification command.
 - **READ — `knowledge_search`** (coordinator tool): returns the top chunks
   (file_id / path / title / heading). The agent then reads the **live original on
@@ -334,8 +338,11 @@ file; status/activity → `journal/` by date or the `checkins_by_date` tool; tas
 
 **Escalation triggers (documented, NOT implemented):** embeddings/vector RAG (the corpus
 outgrows FTS5 — phase-5 spike only), prefix indexes (a real query misses on prefix
-search), standalone sync scripts (volume outgrows agent-mediated sync). Each stays a
-written trigger until the team decides.
+search), standalone sync scripts (volume outgrows agent-mediated sync), `llm-wiki`
+(the team ever wants *distilled* knowledge packs — Hermes' bundled research skill is
+the ready-made answer), and `USER.md` (Hermes' native per-user context slot — the
+landing spot if per-member profiles are ever revived). Each stays a written trigger
+until the team decides (second-pass sweep, audit 2026-09-03).
 
 **Loading:** the gateway runs with `data/project` as working directory, so `AGENTS.md`
 is injected into DM sessions automatically (Hermes discovers context files from the
