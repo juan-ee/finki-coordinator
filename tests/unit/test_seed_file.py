@@ -46,12 +46,7 @@ def test_wakes_match_the_strict_hhmm_pattern() -> None:
 
 
 def test_telegram_ids_are_placeholders() -> None:
-    """Seed hygiene (D3): every committed telegram_id is None — real IDs never committed.
-
-    Real Telegram IDs enter the system through scripts/allow.sh (the .env door) and
-    member_add/member_update (session context), never through this file. A pre-known
-    founding roster with real IDs belongs in a gitignored local seed file instead.
-    """
+    """Seed hygiene (D3): every committed telegram_id is None — real IDs never committed."""
     for member in _members():
         telegram_id = member.get("telegram_id")
         assert telegram_id is None, (

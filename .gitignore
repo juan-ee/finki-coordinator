@@ -3,6 +3,9 @@ data/
 .env
 backups/
 
+# Local roster seed with real Telegram IDs (README step 3, seed-file header) — never commit
+config/members.local.yaml
+
 # Python & tool caches
 __pycache__/
 .venv/
