@@ -45,6 +45,8 @@ services:
       # Secrets & credentials — bare list form: values flow from the runtime
       # environment (sourced .env), never rendered into this file or its config.
       - TELEGRAM_BOT_TOKEN
+      # the DM door: extended by scripts/allow.sh (operator-run; applies via up -d,
+      # never restart — restart reuses the env frozen at container creation).
       - TELEGRAM_ALLOWED_USERS
       - TELEGRAM_GROUP_ALLOWED_CHATS
       - TELEGRAM_GROUP_ALLOWED_USERS

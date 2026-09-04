@@ -68,7 +68,9 @@ cd finki-coordinator
 1. **Secrets** — `cp .env.example .env` and fill it: `TELEGRAM_BOT_TOKEN`,
    `TELEGRAM_ALLOWED_USERS` (comma-separated numeric Telegram IDs), `OPENROUTER_API_KEY`,
    the `GOOGLE_DRIVE_*` OAuth trio, `RCLONE_REMOTE`. On the Pi set `HERMES_UID` /
-   `HERMES_GID` to your `id -u` / `id -g`. Never commit `.env`.
+   `HERMES_GID` to your `id -u` / `id -g`. Never commit `.env`. To onboard a member
+   later, run `scripts/allow.sh <id>...` — it appends their ID and applies with
+   `docker compose up -d` (never edit the gate by hand and restart; proposal §8.2).
 2. **Config** — `cp config/config.example.yaml config/config.yaml`, then set the project
    name, Shared Drive folder, and the anchor timezone for human-facing times (digest).
 3. **Roster** — edit `config/members.seed.yaml` (names, IANA timezones, local wake
