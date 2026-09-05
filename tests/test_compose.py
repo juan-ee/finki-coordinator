@@ -87,6 +87,25 @@ def test_environment_keys_match_the_passthrough_contract() -> None:
     )
 
 
+def test_config_dir_is_mounted_for_the_freshness_knob() -> None:
+    """T2.23: config/ is mounted read-only at /opt/data/config so the plugin's
+    freshness gate can read knowledge.freshness_ttl_minutes from config.yaml (the
+    two-class law: TTL is an infra valve owned by the operator's config file)."""
+    proc = _render_config()
+
+    assert proc.returncode == 0, f"compose config failed:\n{proc.stderr}"
+    config = yaml.safe_load(proc.stdout)
+    volumes = config["services"]["gateway"]["volumes"] or []
+    mounts = [
+        v
+        for v in volumes
+        if str(v.get("target", "")) == "/opt/data/config"
+        and v.get("read_only") is True
+        and str(v.get("source", "")).endswith("/config")
+    ]
+    assert mounts, f"config mount missing; rendered volumes: {volumes}"
+
+
 def test_sync_script_is_mounted_for_the_nightly_cron_job() -> None:
     """T2.19: scripts/sync_knowledge.py is mounted read-only at ~/.hermes/scripts/
     (in-container /opt/data/scripts/) — the path hermes cron's --script mode requires,

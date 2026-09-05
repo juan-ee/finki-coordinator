@@ -37,6 +37,9 @@ services:
       # ~/.hermes/scripts/ path hermes cron's --script mode requires — the nightly
       # knowledge-sync job runs it with --no-agent (no LLM in the data path, rule 11).
       - ./scripts/sync_knowledge.py:/opt/data/scripts/sync_knowledge.py:ro
+      # Boot defaults (T2.23): the plugin's freshness gate reads
+      # knowledge.freshness_ttl_minutes from config.yaml here at wiring time.
+      - ./config:/opt/data/config:ro
     environment:
       # Timezone law (AGENTS.md #4): the whole container is anchored to UTC —
       # Hermes computes every cron schedule in this single zone; per-member

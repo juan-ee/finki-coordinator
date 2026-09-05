@@ -13,7 +13,8 @@ the actionable one-line summary in "summary" and empty "data".
 """
 
 import re
-from datetime import date, datetime
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta
 from typing import Protocol, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -60,6 +61,54 @@ class Clock(Protocol):
     def now(self) -> datetime:
         """Return the current timezone-aware UTC instant."""
         ...
+
+
+@dataclass(frozen=True)
+class FreshnessOutcome:
+    """One freshness refresh attempt's report (counts/reasons only — rule 11)."""
+
+    status: str  # "refreshed" | "degraded"
+    detail: str  # the sync script's counts line, or the failure reason when degraded
+
+
+class KnowledgeFreshness(Protocol):
+    """Read-through freshness seam for knowledge_search (rule 5: I/O behind a Protocol).
+
+    ttl_minutes carries the wired config knob; last_check returns the stored ISO
+    instant of the last freshness attempt (None = never checked); refresh runs the
+    deterministic incremental sync and stamps the attempt. Degraded outcomes report
+    status="degraded" and let the search serve the cache — reading never hard-fails."""
+
+    def ttl_minutes(self) -> int:
+        """Return the configured freshness TTL in minutes."""
+        ...
+
+    def last_check(self) -> str | None:
+        """Return the last attempt's ISO stamp, or None when never attempted."""
+        ...
+
+    def refresh(self, now: str) -> FreshnessOutcome:
+        """Run the deterministic incremental sync and stamp the attempt with now."""
+        ...
+
+
+def freshness_due(last_check: str | None, now: datetime, ttl_minutes: int) -> bool:
+    """Pure TTL decision: True when the cache must be refreshed before matching.
+
+    Due means never checked, an unparseable stamp, or now at/after
+    last_check + ttl_minutes (the boundary is inclusive, so searches strictly inside
+    the window debounce). A naive stamp is read as UTC (the cache is UTC-anchored);
+    a corrupt one cannot prove freshness and fails open to a refresh.
+    """
+    if last_check is None:
+        return True
+    try:
+        parsed = datetime.fromisoformat(last_check)
+    except ValueError:
+        return True
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return now >= parsed + timedelta(minutes=ttl_minutes)
 
 
 def _result(
@@ -595,8 +644,19 @@ def knowledge_search(
     settings: SettingsRepository,
     clock: Clock,
     knowledge: KnowledgeRepository,
+    freshness: KnowledgeFreshness | None = None,
 ) -> dict[str, object]:
     """Search the local knowledge cache (FTS5) - a finding aid, not the record (D2).
+
+    Read-through freshness gate (T2.23, proposal section 3): when a freshness seam is
+    wired and the cache is due (pure freshness_due on the injected Clock), the
+    deterministic incremental sync runs FIRST, then the search proceeds on the
+    refreshed cache. Searches strictly inside the TTL window debounce (no re-check);
+    a degraded refresh (Drive unreachable) still serves the cache with the
+    degradation named in the summary - reading never hard-fails. Payload validation
+    (unknown fields, missing/empty query, bad limit, control characters) runs before
+    the gate, so a rejected query never triggers a refresh; FTS5-syntax errors are
+    search-time and stay post-gate.
 
     Returns the top chunks (file_id/path/title/heading) ordered by bm25 with the
     title weighted 10:1 over the body; the agent confirms against the LIVE Drive
@@ -626,6 +686,19 @@ def knowledge_search(
             f"search failed: query contains control character U+{ord(control):04X}"
             " - plain words work best (the query is an FTS5 MATCH)"
         )
+    refreshed_note = ""
+    degraded_note = ""
+    if freshness is not None and freshness_due(
+        freshness.last_check(), clock.now(), freshness.ttl_minutes()
+    ):
+        try:
+            outcome = freshness.refresh(clock.now().isoformat())
+        except Exception as exc:  # noqa: BLE001 - reading never hard-fails (T2.23)
+            outcome = FreshnessOutcome("degraded", f"{type(exc).__name__}: {exc}")
+        if outcome.status == "degraded":
+            degraded_note = outcome.detail
+        else:
+            refreshed_note = outcome.detail
     try:
         hits = knowledge.search(query, effective)
     except KnowledgeSearchError as exc:
@@ -642,4 +715,13 @@ def knowledge_search(
             for hit in hits
         ],
     }
-    return _result(True, f"{len(hits)} hit(s) for {query!r}", None, data)
+    base = f"{len(hits)} hit(s) for {query!r}"
+    if degraded_note:
+        summary = (
+            f"{base} - freshness check FAILED ({degraded_note}); serving the possibly-stale cache"
+        )
+    elif refreshed_note:
+        summary = f"{base} (cache refreshed: {refreshed_note})"
+    else:
+        summary = base
+    return _result(True, summary, None, data)

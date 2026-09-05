@@ -14,4 +14,7 @@ rag:
   enabled: false                   # optional escalation layer (phase 5)
   chunk_size: 800
   embed_model: bge-small-en-v1.5
+knowledge:
+  freshness_ttl_minutes: 10        # read-through gate on knowledge_search: after this
+                                   # many minutes the next search refreshes the cache
 log_level: info

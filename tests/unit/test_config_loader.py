@@ -12,6 +12,7 @@ import yaml
 from coordinator.config import (
     Config,
     ConfigError,
+    KnowledgeConfig,
     ModelConfig,
     ProjectConfig,
     RagConfig,
@@ -270,3 +271,37 @@ def test_permissive_empty_schema_still_fails_clean(tmp_path: pathlib.Path) -> No
 
     with pytest.raises(ConfigError, match="project"):
         load_config(config_path, schema_path)
+
+
+def test_freshness_ttl_defaults_to_ten_when_section_absent(
+    tmp_path: pathlib.Path, example: dict
+) -> None:
+    """A config without a knowledge section loads the documented default TTL (10)."""
+    variant = copy.deepcopy(example)
+    variant.pop("knowledge", None)
+    path = _write_variant(tmp_path, variant)
+
+    config = load_config(path, SCHEMA_PATH)
+
+    assert config.knowledge == KnowledgeConfig(freshness_ttl_minutes=10)
+
+
+def test_freshness_ttl_loads_the_configured_value(tmp_path: pathlib.Path, example: dict) -> None:
+    """An explicit knowledge.freshness_ttl_minutes lands in the frozen dataclass."""
+    variant = copy.deepcopy(example)
+    variant["knowledge"] = {"freshness_ttl_minutes": 23}
+    path = _write_variant(tmp_path, variant)
+
+    config = load_config(path, SCHEMA_PATH)
+
+    assert config.knowledge == KnowledgeConfig(freshness_ttl_minutes=23)
+
+
+def test_freshness_ttl_loader_rejects_non_positive(tmp_path: pathlib.Path, example: dict) -> None:
+    """A non-positive TTL is a ConfigError even if a schema-less path slips through."""
+    variant = copy.deepcopy(example)
+    variant["knowledge"] = {"freshness_ttl_minutes": 0}
+    path = _write_variant(tmp_path, variant)
+
+    with pytest.raises(ConfigError):
+        load_config(path, SCHEMA_PATH)
