@@ -28,13 +28,18 @@ knowledge source — and **no restart needed for everyday changes**.
   container creation. The bot never edits its own door. `member_add` then requires the
   sender's `telegram_id`; duplicate active-member names are rejected; an owner-only
   `member_delete` hard-removes a row.
-- **D2 — Drive without rclone.** The Drive folder is the team's memory; the agent is its
-  librarian on Hermes' built-in **google-workspace skill ($GAPI)** plus a local SQLite
-  FTS5 index: `knowledge_sync` (incremental DOWN by `modifiedTime` watermark into a
-  rebuildable cache), `knowledge_search` (READ: top chunks, then confirm against the
-  live file), `$GAPI drive upload` (UP: journals/digests/agent docs — core, not
-  deferred). Bisync, `sync.sh`, the host crontab, and the recovery runbook are removed.
-  Toolset 7 → 10.
+- **D2 — Drive without rclone; sync without an LLM.** *(rev. 2026-09-05, v6.1 — the
+  phase-2 gate caught the agent-mediated sync inventing file contents; see §11.)* The
+  Drive folder is the team's memory; the agent is its librarian on Hermes' built-in
+  **google-workspace skill ($GAPI)** plus a local SQLite FTS5 index. **DOWN/INDEX is
+  deterministic**: `scripts/sync_knowledge.py` lists Drive via the skill's own CLI,
+  diffs against the `modifiedTime` watermark, downloads what changed, and ingests
+  through the plugin's own chunker + repository — **no file content ever flows through
+  LLM context**. Scheduled via `hermes cron`, on demand via `make sync`.
+  `knowledge_search` (READ: top chunks, then confirm against the live file) and
+  `$GAPI drive upload` (UP: journals/digests/agent docs — core, not deferred) stay
+  agent tools. The two-call `knowledge_sync` tool is removed. Bisync, `sync.sh`, the
+  host crontab, and the recovery runbook stay removed. Toolset 7 → 9.
 - **D3 — Seed hygiene.** The committed seed carries placeholders; real Telegram IDs are
   never committed.
 - **D4 — Dead weight cut.** `status_days` column, `digest_time` setting, compose Drive
@@ -122,7 +127,8 @@ documented plugin path; stdlib `sqlite3` + `zoneinfo`, zero extra dependencies) 
 `checkins_by_date` · `setting_get` · `setting_set` · `knowledge_sync` · `knowledge_search`.
 (Cuts vs v4: `member_deactivate` → `member_update` with `active=0`; `member_get` →
 `member_list` filtered; `board_snapshot` → the `kanban_*` toolset already covers it.
-v6 additions (D1/D2): `member_delete`, `knowledge_sync`, `knowledge_search`.
+v6 additions (D1/D2): `member_delete`, `knowledge_search`. (The v6 `knowledge_sync`
+tool was removed in v6.1 — sync is the deterministic script, §3/§11.)
 Every tool is prompt tokens and misuse surface.)
 Every DB connection opens with `PRAGMA journal_mode=WAL` + `busy_timeout=5000` — the
 gateway, the journal export and any script share the file without lock errors.
@@ -296,13 +302,19 @@ Google Drive (the record — team-edited):     data/project/ (agent workspace, l
 ```
 
 **The loop — DOWN · INDEX · READ · UP (D2):**
-- **DOWN — `knowledge_sync`** (coordinator tool): incremental by Drive `modifiedTime`.
-  Call 1 (plan, empty payload) returns the stored watermark; the agent lists the Drive
-  root via `$GAPI`, filters files whose `modifiedTime` passed the watermark, and
-  downloads those; call 2 (ingest) passes the fetched files in; the tool chunks each
-  file, rewrites its cache rows (per-file reindex = DELETE + reINSERT), and advances the
-  watermark — derived state (`MAX(modified_time)` over cached rows), so there is no
-  knob for the agent to clobber.
+- **DOWN — `scripts/sync_knowledge.py`** (deterministic script, v6.1): incremental by
+  Drive `modifiedTime`. It lists the knowledge Drive via the google-workspace skill's
+  own CLI, filters files whose `modifiedTime` passed the stored watermark, downloads
+  those, and ingests them through the plugin's own chunker + `KnowledgeRepository` —
+  the same code path the former tool used (per-file reindex = DELETE + reINSERT),
+  minus the LLM. The watermark stays derived state (`MAX(modified_time)` over cached
+  rows), so there is no knob to clobber. Runs from a `hermes cron` job (nightly) and
+  on demand (`make sync`); `--resync` rebuilds the cache from scratch; a run with no
+  Drive-side changes ingests nothing. **The former agent-mediated two-call
+  `knowledge_sync` tool is removed:** on the phase-2 gate it invented file contents
+  mid-ingest (self-caught, repaired via the same-file_id-replaces contract) and
+  stalled batch-shuttling 19 files through LLM context — file content never crosses
+  LLM context again (AGENTS.md hard rule 11).
 - **INDEX — SQLite FTS5, external-content table** (DDL in §1): `unicode61
   remove_diacritics 2` (accent-insensitive: `MATCH 'decision'` finds "decisión"),
   `bm25()` ranking with title weighted 10:1 above body, one chunk per markdown `##`
@@ -341,11 +353,13 @@ file; status/activity → `journal/` by date or the `checkins_by_date` tool; tas
 
 **Escalation triggers (documented, NOT implemented):** embeddings/vector RAG (the corpus
 outgrows FTS5 — phase-5 spike only), prefix indexes (a real query misses on prefix
-search), standalone sync scripts (volume outgrows agent-mediated sync), `llm-wiki`
+search), `llm-wiki`
 (the team ever wants *distilled* knowledge packs — Hermes' bundled research skill is
 the ready-made answer), and `USER.md` (Hermes' native per-user context slot — the
 landing spot if per-member profiles are ever revived). Each stays a written trigger
-until the team decides (second-pass sweep, audit 2026-09-03).
+until the team decides (second-pass sweep, audit 2026-09-03). *(Former trigger
+"standalone sync scripts" FIRED 2026-09-05: the deterministic script is now the
+shipped design — §3/§11.)*
 
 **Loading:** the gateway runs with `data/project` as working directory, so `AGENTS.md`
 is injected into DM sessions automatically (Hermes discovers context files from the
@@ -387,7 +401,7 @@ the sqlite-vec plugin stays a phase-5 escalation.
 |---|---|
 | 0. Foundation | Repo skeleton: compose building hermes-agent at pinned `HERMES_REF`; `.env.example`; config schema + validation; `setup.sh` (rclone conf, SOUL.md install, Hermes config: model + `cron.model` + `timezone: UTC`); `init_db`; README checklist incl. OpenRouter key limit; Pi prepared |
 | 1. Core bot | Hermes + Telegram + kanban wired; coordinator plugin (7 tools); daily check-in crons + digest job. **Gates: ARM64 build · kanban + plugin live · timezone matrix (Guayaquil + Berlin, incl. a DST edge) · `cron.model` pin verified · AGENTS.md/SOUL.md wiring** |
-| 2. Knowledge (v6) | Door-first member lifecycle: `allow.sh`, `member_add` rework, `member_delete`, seed hygiene; dead-weight cut (status_days, digest_time, sync.sh, Drive env); knowledge tables + `knowledge_sync`/`knowledge_search`; $GAPI gate. **Gates: $GAPI in-container FIRST · FTS5 diacritics + integrity-check · upload/down round-trips · digest end-to-end** |
+| 2. Knowledge (v6 + v6.1) | Door-first member lifecycle: `allow.sh`, `member_add` rework, `member_delete`, seed hygiene; dead-weight cut (status_days, digest_time, sync.sh, Drive env); knowledge tables + `knowledge_search`; $GAPI gate; **v6.1: deterministic sync script replacing the `knowledge_sync` tool**. **Gates: $GAPI in-container FIRST · FTS5 diacritics + integrity-check · sync round-trip + no-op (script) · upload/down round-trips · digest end-to-end** |
 | 3. Persona | OpenExecutive persona (as SOUL.md) + triage prompt, toggled from config |
 | 4. Hardening | Backups verified (`data/project/` agent workspace + both DBs — the knowledge cache is rebuildable, so its backup is convenience, not necessity), cost review (OpenRouter console), conversational audit dry-run ("compare members vs cron jobs") |
 | 5. Escalation | Optional vector RAG plugin (+sqlite-vec) if corpus outgrows agentic search |
@@ -415,7 +429,9 @@ ports (the gateway long-polls Telegram). Expect a slow one-time image build on t
    by design. Accepted residuals: a Drive-side deletion leaves stale cache chunks until
    the next full resync (the cache is rebuildable; searches still confirm against the
    live file), and $GAPI rate limits bound sync/upload volume (fine for a team of 4 and
-   dozens of text docs).
+   dozens of text docs). **v6.1 residual:** the cron-synced cache lags Drive-side
+   changes by up to the sync interval — correctness is carried by the live-read
+   confirmation rule (READ), not by cache freshness.
 
 ## 7. Resolved decisions (formerly open items)
 
@@ -555,3 +571,28 @@ Everything from step 10 onward is conversation. No SSH after boot day except upg
   the old bisync gate (former T2.4) is retired — it never completed (abandoned at the
   Drive-OAuth incident) and bisync never reached production, which is what makes the
   deletion safe.
+
+## 11. Changelog v6 → v6.1 (owner-confirmed 2026-09-05; phase-2 gate evidence)
+
+- **Deterministic knowledge sync (D2 rev).** The phase-2 gate caught the agent-mediated
+  two-call `knowledge_sync` failing live on the Pi: the agent invented file contents
+  (placeholder summaries) mid-ingest — self-caught and repaired via the
+  same-file_id-replaces contract, but the failure mode is constitutionally unsafe — and
+  batch-shuttling 19 files through LLM context stalled for 15+ minutes of tool-call
+  loops. v6.1 replaces the tool with **`scripts/sync_knowledge.py`** (skill CLI list →
+  watermark diff → download → ingest through the plugin's own chunker/repository), run
+  by `hermes cron` nightly and on demand (`make sync`). The `knowledge_sync` tool is
+  removed (toolset 10 → 9); `knowledge_search` and `$GAPI drive upload` are unchanged.
+  New hard rule 11 in AGENTS.md: **file content never flows through LLM context.**
+  Full spec: ROADMAP T2.18–T2.22 (separate implementation session).
+- **Deployment shape (owner decision, same day):** the knowledge Drive is a dedicated
+  Google account's own My Drive (`finklabs2026@gmail.com`) — the bot's Drive universe
+  IS the team space; nothing is shared in, nothing personal is visible (the owner's
+  original shared-folder approach was revoked after the agent's root-listing surfaced
+  account-wide files). OAuth completed through the skill's own setup flow (drive
+  scope); the dead v5 rclone `.env` lines removed; the runtime AGENTS.md carries a
+  Drive-scope note (regenerated file — regenerate after roster changes).
+- **Gate record:** docs/verify/phase2.md carries the full timeline — $GAPI STOP gate
+  (missing OAuth) → resolved via the skill's setup → Drive-scoping deviation →
+  sync incident + server-side verification (99 chunks / 14 files, zero pollution,
+  diacritics match proven). Remaining boxes run after T2.18–T2.20 land (T2.21).

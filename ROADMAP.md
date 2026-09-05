@@ -411,6 +411,47 @@ Pi/human; the agent only produces/refreshes the verification script.
   up); digest end-to-end; AGENTS.md query map live; doc-extraction check ($GAPI
   export). No bisync/rclone steps remain. Leave unchecked for the human.
 
+## Phase 2 follow-ups — v6.1 deterministic sync (owner-confirmed 2026-09-05)
+
+> Mid-gate design change: the phase-2 gate caught the agent-mediated `knowledge_sync`
+> inventing file contents (self-caught, repaired via the same-file_id-replaces
+> contract) and stalling batch-shuttling 19 files through LLM context
+> (docs/verify/phase2.md, step 2 evidence). D2 is amended (proposal §3/§11):
+> **sync becomes a deterministic script; the tool is removed; file content never
+> crosses LLM context** (AGENTS.md hard rule 11). Tasks run top-to-bottom in a
+> dedicated session; T2.21 gates the remaining phase-2 boxes on them.
+
+- [ ] **T2.18 `scripts/sync_knowledge.py` — deterministic knowledge sync (D2 rev)** — TDD.
+  Pure diff/plan logic in `src/coordinator/syncing.py` (watermark diff, changed-file
+  selection — no I/O); I/O adapter in the script: list the knowledge Drive via the
+  google-workspace skill CLI (`google_api.py drive search --raw-query`), download
+  changed text files, ingest through `KnowledgeRepository` (same per-file reindex =
+  DELETE + reINSERT semantics as the former tool); watermark stays derived
+  (`MAX(modified_time)`). Flags: `--resync` (full rebuild), `--dry-run`. Idempotent:
+  a second run with no Drive-side changes ingests 0 files. Tests: fake CLI transport
+  (Protocol), watermark edge cases, non-text files title/path-only, no network.
+  Acceptance: `make check`; on the Pi, a real round + a no-op second round.
+- [ ] **T2.19 Wire the schedule: `make sync` + hermes cron** — `make sync` target
+  wrapping the script via `uv run`; documented nightly `hermes cron` job (proposal §8.1
+  runbook line + docker/README note; conversational creation is the operator path).
+  Acceptance: `make sync` performs a real round on the Pi; `hermes cron list` shows
+  the nightly job.
+- [ ] **T2.20 Remove the `knowledge_sync` tool (toolset 10 → 9)** — delete the
+  TOOL_SPECS entry + `knowledge_sync` handler + its tests; rewrite
+  `prompts/skills/knowledge/SKILL.md`'s sync section (cache refreshed by script/cron;
+  the agent only reads); update README architecture lines, `config.schema.json`'s
+  drive_root description, AGENTS.md tool counts. Acceptance: `make check`; the plugin
+  registers exactly 9 tools; no live doc references the two-call flow (changelogs/
+  gate history excepted).
+- [ ] **T2.21 `DOC` — phase-2 gate refresh for v6.1** — update `docs/verify/phase2.md`
+  pre-flight (9 tools; no `knowledge_sync`), re-verify step 2 (script round-trip +
+  no-op) and step 3 (search diacritics on real data) against the script, remove the
+  v6.1 resumption note, then run the remaining boxes (5–9) fresh.
+- [ ] **T2.22 `DOC`/`chore` — small template fixes logged during the gate** — gitignore
+  `config/config.yaml` (any deployment leaves the tree clean); fix the gate's stale
+  SQLite-version note (in-container 3.53.4, not 3.50.4). Acceptance: fresh-clone
+  `git status` clean after setup.
+
 ## Phase 3 — Persona
 
 - [ ] **T3.1 Persona toggle** — `persona.enabled: true` in schema + config loader;
