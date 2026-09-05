@@ -35,6 +35,7 @@ TOOL_NAMES = frozenset(
         "checkins_by_date",
         "setting_get",
         "setting_set",
+        "knowledge_sync",
     }
 )
 
@@ -64,6 +65,7 @@ EXPECTED_FIELDS: dict[str, tuple[dict[str, str], list[str]]] = {
     ),
     "member_list": ({"active": "integer"}, []),
     "member_delete": ({"member_id": "integer"}, ["member_id"]),
+    "knowledge_sync": ({"files": "array"}, []),
     "checkin_submit": (
         {
             "member_id": "integer",
@@ -233,17 +235,17 @@ def _wire() -> tuple[MembersRepository, CheckinsRepository, SettingsRepository, 
 # --- register_tools -------------------------------------------------------------------
 
 
-def test_register_tools_records_exactly_eight_registrations() -> None:
+def test_register_tools_records_exactly_nine_registrations() -> None:
     """register_tools() calls ctx.register_tool once per TOOL_SPECS entry, all coordinator."""
     ctx = FakeCtx()
     members, checkins, settings, clock = _wire()
 
     registered = register_tools(
-        ctx, members=members, checkins=checkins, settings=settings, clock=clock
+        ctx, members=members, checkins=checkins, settings=settings, clock=clock, knowledge=None
     )
 
     names = [call["name"] for call in ctx.calls]
-    assert len(ctx.calls) == 8
+    assert len(ctx.calls) == 9
     assert set(names) == TOOL_NAMES
     assert len(set(names)) == len(names)  # exactly one registration per tool
     assert all(call["toolset"] == "coordinator" for call in ctx.calls)
@@ -265,8 +267,8 @@ def test_every_schema_is_well_formed() -> None:
         assert schema["additionalProperties"] is False, name
 
 
-def test_tool_specs_cover_exactly_the_eight_tools() -> None:
-    """TOOL_SPECS has exactly the eight tool names, each wired to its handlers.py function."""
+def test_tool_specs_cover_exactly_the_nine_tools() -> None:
+    """TOOL_SPECS has exactly the nine tool names, each wired to its handlers.py function."""
     assert set(TOOL_SPECS) == TOOL_NAMES
     for name, handler in (
         ("member_add", handlers.member_add),
@@ -281,11 +283,34 @@ def test_tool_specs_cover_exactly_the_eight_tools() -> None:
 
 
 def test_schemas_mirror_handler_payload_fields_exactly() -> None:
-    """Schema properties/required match what each handler enforces, types included."""
+    """Schema properties/required match what each handler enforces, types included.
+
+    Flat tools compare {key: {"type": type}}; knowledge_sync's "files" array carries a
+    nested item schema, pinned in full below.
+    """
     for tool, (fields, required) in EXPECTED_FIELDS.items():
         schema = TOOL_SPECS[tool]["schema"]
-        expected_properties = {key: {"type": value} for key, value in fields.items()}
-        assert schema["properties"] == expected_properties, tool
+        properties = schema["properties"]
+        assert isinstance(properties, dict), tool
+        assert sorted(properties) == sorted(fields), tool
+        if tool == "knowledge_sync":
+            assert properties["files"] == {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "file_id": {"type": "string"},
+                        "path": {"type": "string"},
+                        "title": {"type": "string"},
+                        "modified_time": {"type": "string"},
+                        "content": {"type": "string"},
+                    },
+                    "required": ["file_id", "path", "title", "modified_time"],
+                    "additionalProperties": False,
+                },
+            }, tool
+        else:
+            assert properties == {key: {"type": value} for key, value in fields.items()}, tool
         assert sorted(schema["required"]) == sorted(required), tool
 
 
@@ -322,9 +347,11 @@ def test_registered_schemas_carry_the_model_facing_description() -> None:
     """
     ctx = FakeCtx()
     members, checkins, settings, clock = _wire()
-    register_tools(ctx, members=members, checkins=checkins, settings=settings, clock=clock)
+    register_tools(
+        ctx, members=members, checkins=checkins, settings=settings, clock=clock, knowledge=None
+    )
 
-    assert len(ctx.calls) == 8
+    assert len(ctx.calls) == 9
     for call in ctx.calls:
         schema = call["schema"]
         assert isinstance(schema, dict), call["name"]
@@ -394,7 +421,9 @@ def test_registered_callable_dispatches_with_the_wired_deps() -> None:
     """A callable register_tools() handed ctx routes a payload into the right handler."""
     ctx = FakeCtx()
     members, checkins, settings, clock = _wire()
-    register_tools(ctx, members=members, checkins=checkins, settings=settings, clock=clock)
+    register_tools(
+        ctx, members=members, checkins=checkins, settings=settings, clock=clock, knowledge=None
+    )
 
     call = next(c for c in ctx.calls if c["name"] == "member_add")
     raw = call["handler"](
@@ -469,4 +498,4 @@ def test_module_imports_with_hermes_absent() -> None:
 
     assert module is hermes_plugin
     assert "hermes" not in sys.modules  # the adapter pulled in no Hermes at import time
-    assert len(TOOL_SPECS) == 8
+    assert len(TOOL_SPECS) == 9

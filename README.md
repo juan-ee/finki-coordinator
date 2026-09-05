@@ -13,9 +13,10 @@ local SQLite FTS5 index, and an OpenExecutive-derived operator persona.
 
 ## What you get
 
-- **8 coordinator tools** in every bot session: `member_add`, `member_update`,
+- **9 coordinator tools** in every bot session: `member_add`, `member_update`,
   `member_list`, `member_delete` (owner-only), `checkin_submit`, `checkins_by_date`,
-  `setting_get`, `setting_set`.
+  `setting_get`, `setting_set`, `knowledge_sync` (Drive cache sync; `knowledge_search`
+  lands with the next task).
 - **Timezone-safe scheduling** — each member's local wake time becomes a UTC cron entry
   (08:00 in Quito → `0 13 * * *`), computed in pure Python (`src/coordinator/scheduling.py`),
   never by the LLM. DST is resolved at schedule-computation time from an explicit instant.

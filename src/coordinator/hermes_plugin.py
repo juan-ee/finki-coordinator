@@ -26,13 +26,14 @@ import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final, Protocol, TypedDict
+from typing import Final, Protocol, TypedDict, cast
 
 from . import db
 from .handlers import (
     Clock,
     checkin_submit,
     checkins_by_date,
+    knowledge_sync,
     member_add,
     member_delete,
     member_list,
@@ -43,6 +44,8 @@ from .handlers import (
 from .repositories import (
     CheckinsRepo,
     CheckinsRepository,
+    KnowledgeRepo,
+    KnowledgeRepository,
     MembersRepo,
     MembersRepository,
     SettingsRepo,
@@ -53,16 +56,37 @@ HandlerFn = Callable[
     [dict[str, object], MembersRepository, CheckinsRepository, SettingsRepository, Clock],
     dict[str, object],
 ]
-"""The uniform handler signature (payload + wired deps -> result dict) every tool targets."""
+"""The uniform handler signature (payload + wired deps -> result dict) most tools target."""
+
+KnowledgeHandlerFn = Callable[
+    [
+        dict[str, object],
+        MembersRepository,
+        CheckinsRepository,
+        SettingsRepository,
+        Clock,
+        KnowledgeRepository,
+    ],
+    dict[str, object],
+]
+"""Signature for the knowledge tools: the uniform deps plus the wired knowledge cache."""
+
+SpecHandler = HandlerFn | KnowledgeHandlerFn
+"""A TOOL_SPECS handler: knowledge tools take the cache as an extra trailing dep."""
 
 
 class ToolSpec(TypedDict):
-    """One TOOL_SPECS entry: host-facing description, payload schema, handler, toolset."""
+    """One TOOL_SPECS entry: host-facing description, payload schema, handler, toolset.
+
+    takes_knowledge (optional, default False) marks the knowledge tools: dispatch
+    hands them the wired KnowledgeRepository as an extra trailing argument.
+    """
 
     description: str
     schema: dict[str, object]
-    handler: HandlerFn
+    handler: SpecHandler
     toolset: str
+    takes_knowledge: bool
 
 
 class HermesContext(Protocol):
@@ -103,6 +127,7 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
         },
         "handler": member_add,
         "toolset": "coordinator",
+        "takes_knowledge": False,
     },
     "member_update": {
         "description": (
@@ -125,6 +150,7 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
         },
         "handler": member_update,
         "toolset": "coordinator",
+        "takes_knowledge": False,
     },
     "member_list": {
         "description": "List members (default: the active roster); rows omit telegram_id.",
@@ -136,6 +162,7 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
         },
         "handler": member_list,
         "toolset": "coordinator",
+        "takes_knowledge": False,
     },
     "member_delete": {
         "description": (
@@ -151,6 +178,7 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
         },
         "handler": member_delete,
         "toolset": "coordinator",
+        "takes_knowledge": False,
     },
     "checkin_submit": {
         "description": "Record one member's check-in for an ISO date (latest submission wins).",
@@ -169,6 +197,7 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
         },
         "handler": checkin_submit,
         "toolset": "coordinator",
+        "takes_knowledge": False,
     },
     "checkins_by_date": {
         "description": "List the check-ins recorded on an ISO date, ordered by member id.",
@@ -180,6 +209,7 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
         },
         "handler": checkins_by_date,
         "toolset": "coordinator",
+        "takes_knowledge": False,
     },
     "setting_get": {
         "description": (
@@ -193,6 +223,7 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
         },
         "handler": setting_get,
         "toolset": "coordinator",
+        "takes_knowledge": False,
     },
     "setting_set": {
         "description": "Persist one setting after per-key validation.",
@@ -204,6 +235,43 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
         },
         "handler": setting_set,
         "toolset": "coordinator",
+        "takes_knowledge": False,
+    },
+    "knowledge_sync": {
+        "description": (
+            "Sync the knowledge cache with Drive (two-call, agent-mediated $GAPI)."
+            " Call with NO arguments first: the result carries the watermark plus the"
+            " $GAPI work order — list the Drive root, pick files with modifiedTime"
+            " past the watermark, download those, then call again passing files=[{"
+            "file_id, path, title, modified_time, content}] (omit content for"
+            " non-text files: they are indexed title/path only). The result of the"
+            " second call reports how many files were synced and the new watermark."
+        ),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "file_id": {"type": "string"},
+                            "path": {"type": "string"},
+                            "title": {"type": "string"},
+                            "modified_time": {"type": "string"},
+                            "content": {"type": "string"},
+                        },
+                        "required": ["file_id", "path", "title", "modified_time"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+        "handler": knowledge_sync,
+        "toolset": "coordinator",
+        "takes_knowledge": True,
     },
 }
 
@@ -216,12 +284,23 @@ def dispatch(
     checkins: CheckinsRepository,
     settings: SettingsRepository,
     clock: Clock,
+    knowledge: KnowledgeRepository | None = None,
 ) -> dict[str, object]:
     """Route one payload to its handler; return the handler's result dict untouched."""
     spec = TOOL_SPECS.get(name)
     if spec is None:
         raise KeyError(f"unknown tool {name!r}: known tools are {', '.join(sorted(TOOL_SPECS))}")
-    return spec["handler"](payload, members, checkins, settings, clock)
+    if spec.get("takes_knowledge", False):
+        if knowledge is None:
+            raise KeyError(f"tool {name!r} requires a wired knowledge repository")
+        return cast(
+            "KnowledgeHandlerFn",
+            spec["handler"],
+        )(payload, members, checkins, settings, clock, knowledge)
+    return cast(
+        "HandlerFn",
+        spec["handler"],
+    )(payload, members, checkins, settings, clock)
 
 
 def _bind(
@@ -230,6 +309,7 @@ def _bind(
     checkins: CheckinsRepository,
     settings: SettingsRepository,
     clock: Clock,
+    knowledge: KnowledgeRepository | None,
 ) -> Callable[..., str]:
     """Return the host-facing callable dispatching a payload to this tool's handler.
 
@@ -243,7 +323,13 @@ def _bind(
     def tool(payload: dict[str, object], **_host: object) -> str:
         """Dispatch one payload with the deps wired at registration time; return JSON."""
         result = dispatch(
-            name, payload, members=members, checkins=checkins, settings=settings, clock=clock
+            name,
+            payload,
+            members=members,
+            checkins=checkins,
+            settings=settings,
+            clock=clock,
+            knowledge=knowledge,
         )
         return json.dumps(result, default=str)
 
@@ -257,6 +343,7 @@ def register_tools(
     checkins: CheckinsRepository,
     settings: SettingsRepository,
     clock: Clock,
+    knowledge: KnowledgeRepository | None,
 ) -> list[str]:
     """Register every TOOL_SPECS tool with the host ctx; return the names in spec order.
 
@@ -270,7 +357,7 @@ def register_tools(
             name=name,
             description=spec["description"],
             schema={**spec["schema"], "description": spec["description"]},
-            handler=_bind(name, members, checkins, settings, clock),
+            handler=_bind(name, members, checkins, settings, clock, knowledge),
             toolset=spec["toolset"],
         )
         registered.append(name)
@@ -302,7 +389,7 @@ def default_db_path() -> Path:
     return Path(home) / "workspace" / "hermes" / "hermes-coord.db"
 
 
-def wire_runtime() -> tuple[MembersRepo, CheckinsRepo, SettingsRepo, SystemClock]:
+def wire_runtime() -> tuple[MembersRepo, CheckinsRepo, SettingsRepo, KnowledgeRepo, SystemClock]:
     """Open the runtime SQLite store (migrating as needed) and return the wired stack.
 
     Migrations are idempotent (versioned), so a fresh store is brought up to the shipped
@@ -313,4 +400,10 @@ def wire_runtime() -> tuple[MembersRepo, CheckinsRepo, SettingsRepo, SystemClock
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = db.connect(path)
     db.migrate(conn, clock.now().isoformat())
-    return MembersRepo(conn), CheckinsRepo(conn), SettingsRepo(conn), clock
+    return (
+        MembersRepo(conn),
+        CheckinsRepo(conn),
+        SettingsRepo(conn),
+        KnowledgeRepo(conn),
+        clock,
+    )

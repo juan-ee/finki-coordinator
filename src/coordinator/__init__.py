@@ -12,6 +12,13 @@ __version__: str = "0.1.0"
 
 
 def register(ctx: HermesContext) -> list[str]:
-    """Wire the runtime SQLite store + system clock and register all 7 tools with ctx."""
-    members, checkins, settings, clock = wire_runtime()
-    return register_tools(ctx, members=members, checkins=checkins, settings=settings, clock=clock)
+    """Wire the runtime SQLite store + system clock and register all tools with ctx."""
+    members, checkins, settings, knowledge, clock = wire_runtime()
+    return register_tools(
+        ctx,
+        members=members,
+        checkins=checkins,
+        settings=settings,
+        clock=clock,
+        knowledge=knowledge,
+    )

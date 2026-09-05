@@ -7,7 +7,7 @@
 # pins this file against that contract.
 name: coordinator
 version: 0.1.0  # keep in sync with src/coordinator/__init__.py — the test pins both
-description: Async project coordination on SQLite (members, check-ins, settings) with pre-computed cron relays for check-in schedules.
+description: Async project coordination on SQLite (members, check-ins, settings + knowledge cache) with pre-computed cron relays for check-in schedules.
 kind: standalone
 provides_tools:
   - member_add
@@ -18,3 +18,4 @@ provides_tools:
   - checkins_by_date
   - setting_get
   - setting_set
+  - knowledge_sync
