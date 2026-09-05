@@ -327,6 +327,28 @@ Deviations observed (if any):
   search-hit prose. `file_id` is in the tool payload by design (the agent's handle for
   $GAPI confirm reads); rendering it in chat is a prompt-level miss — no repo guidance
   says the ids are internal. Queued for the T2.25 follow-up above.
+- 2026-09-05 (fix bundle APPLIED, owner-approved, agent-run over SSH): (a) runtime
+  SOUL.md refreshed from the repo persona — `diff` clean, rule 6 + door-first +
+  member_delete rules restored (setup.sh route blocked by (c); the install step is a
+  plain copy, executed directly); (b) the agent-authored `coordinator-operations`
+  skill REMOVED — authorship attributed to Hermes' skill curator (9 ledger entries,
+  sha-tracked in `~/.hermes/skills/.curator_ledger.jsonl`); full backup preserved at
+  `~/coordinator-operations-removed-20260905/` — lessons to salvage: the
+  `cronjob action: update`-requires-`job_id` claim (VERIFY LATER — our relays use
+  `action: edit` + `name`, name-based edit verified at this pin in the phase-1
+  upstream evaluation), the verify-`next_run_at`-after-apply practice, and the
+  STT voice-transcription reference (backup only); (c) stale `~/.hermes/kb_sync/`
+  staging DELETED (verified absent). Step 3 box 2 re-runs in a fresh DM session.
+- 2026-09-05 (new finding): the Pi's `.env` still carries a dead v5 rclone stanza
+  (ini-format `[gdrive]` section, ~lines 25–31: `type = drive`, `client_id`,
+  `client_secret`, `scope`, `token`, `team_drive`) — invisible to the pre-flight
+  `GOOGLE_DRIVE|RCLONE` grep (bare rclone key names) and tolerated by compose, but it
+  BREAKS `source .env` flows (the README quickstart step-6 line fails with bash
+  errors; that is why setup.sh could not be re-run with a sourced env). Pi-local
+  operator artifact, same credential material already written to
+  `~/.hermes/google_client_secret.json` (backup `.env.bak-20260905-095236`).
+  **Recommended:** remove the stanza (operator action or next agent-run with owner
+  approval); the template's `.env.example` needs no change (a stranger never has it).
 
 - 2026-09-05 (T2.21 doc refresh): the gate re-based on the v6.1 deterministic sync —
   pre-flight gains the 9-tool re-check; step 2's round-trip/no-op are re-verified
