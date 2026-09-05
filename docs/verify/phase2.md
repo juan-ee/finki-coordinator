@@ -262,11 +262,25 @@ docker compose exec gateway python3 -c "import sqlite3; c = sqlite3.connect('/op
       outcome, uncontrolled mechanism). Re-run (Spanish ask, single message bundling
       append + upload-to-folder + one-shot) after the Drive-side `journal/` folder
       convention is settled — see deviations.
+      **↻ RE-RUN 2026-09-05 (after the operator created `journal/` on Drive and moved
+      the file) — PASS, with heavy caveats:** the bot appended the operator-supplied
+      line, uploaded to `journal/2026-09-05.md` (id 1PU7hP5y…, verified by reading
+      the content back from Drive), and ran the write-through one-shot — the counts
+      line ON CAMERA: `1 text selected … ingested 1 file(s); failed 0; watermark
+      2026-09-05T20:12:12Z`. Cache independently verified (row present, line in
+      body, watermark matches). Caveats recorded in the deviations: the Google
+      token was root-owned mid-run (the bot worked around it with a manually
+      refreshed access token in a shadow HERMES_HOME and a direct-API upload
+      bypassing the CLI), and the documented in-container one-shot invocation is
+      not self-sufficient (dual-interpreter problem) — the bot composed PATHs to
+      make it work. Both feed T2.26.
 - [ ] **DOWN proof of the round trip:** in the Drive web UI, append a line containing
-      a third distinctive phrase (record: ____________) to the uploaded note → run
-      `make sync` on the Pi host → DM *"Search the knowledge base for ____________"*
-      → the agent finds it and confirms against the live file. (Equivalently: wait out
-      the freshness TTL and search — the read gate refreshes first, T2.23.)
+      a third distinctive phrase (record: ____________) to the uploaded note → the
+      refresh happens through the SYSTEM's own path: wait out the freshness TTL
+      (10 min) and DM the search — the T2.23 read gate runs the deterministic sync
+      first, and the summary says so → the agent finds the phrase and confirms
+      against the live file. (`make sync` on the Pi host is the operator fallback,
+      not the primary path — the v6.1 design makes the read path self-healing.)
 
 ## 6. Digest end-to-end
 
@@ -376,6 +390,21 @@ Deviations observed (if any):
   upstream evaluation), the verify-`next_run_at`-after-apply practice, and the
   STT voice-transcription reference (backup only); (c) stale `~/.hermes/kb_sync/`
   staging DELETED (verified absent). Step 3 box 2 re-runs in a fresh DM session.
+- 2026-09-05 (step-5 re-run findings): (a) **Google token root-owned mid-gate** —
+  `~/.hermes/google_token.json` flipped to `root:root 644` at 21:07:52 CEST
+  (owner unknown — operator asked what ran with sudo around then); the bot (uid
+  1000) could not write the refreshed token back, so the CLI failed and it
+  improvised a manually-refreshed access token in a shadow HERMES_HOME
+  (`/tmp/ghome`) plus a direct-API upload bypassing the gws CLI — working, but a
+  second diverging token file is a drift/lock-out hazard (cleaned after the chown
+  fix). Root fix + template hardening: T2.26. (b) **the documented in-container
+  one-shot is not self-sufficient** — `python3 /opt/data/scripts/sync_knowledge.py`
+  needs the Hermes venv for the coordinator imports but the CLI needs
+  googleapiclient (gapi venv); the bot composed PATHs / interpreter pairs to make
+  it work — T2.26 should pin the correct invocation (the T2.23 freshness gate
+  already solves it for its subprocess). (c) the bot offered to SAVE the workaround
+  as a curated skill — declined (the curator-authored-skill drift class removed
+  earlier today); the fix belongs in the template, not in runtime folklore.
 - 2026-09-05 (step-5 run): (a) the Drive-side journal destination was never defined —
   no `journal/` folder exists in the knowledge base, so the skill's "matching Drive
   folder" is unresolvable and the bot guessed the root; (b) the mandatory

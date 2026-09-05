@@ -490,6 +490,23 @@ Pi/human; the agent only produces/refreshes the verification script.
   on the mechanism (setup.sh install vs curated). Salvage verification note from the
   removed runtime skill: does `cronjob action: update` really require `job_id`
   (our relays emit `action: edit` + `name`; name-based edit verified at this pin).
+- [ ] **T2.26 `fix` — Google-token permissions + in-container one-shot ergonomics**
+  *(surfaced by the phase-2 gate 2026-09-05)* — the token file
+  (`~/.hermes/google_token.json`) ended up root-owned mid-run, breaking every
+  refresh write by the runtime uid (the agent improvised a shadow-HERMES_HOME
+  workaround — exactly the drift class the template must prevent). (a)
+  `scripts/sync_knowledge.py` pre-flight: if the token path (where determinable)
+  exists but is not writable by the effective uid, fail LOUD with the exact
+  chown/chmod remedy instead of a confusing CLI auth error; (b) `scripts/setup.sh`:
+  if the token exists and is not writable by the container uid, print (or repair —
+  the script runs on the host with operator privileges) the fix; (c) gate doc step 1
+  gains "run the OAuth setup as the container's runtime user, never root/sudo";
+  (d) pin the correct in-container one-shot invocation — dual interpreter (Hermes
+  venv for the coordinator imports, gapi venv for the CLI); the T2.23 freshness
+  gate's subprocess already resolves this, reuse its form, and put the line in the
+  knowledge SKILL.md (may absorb into T2.25); (e) runbook adjacency: token-
+  permissions troubleshooting lands with T4.2. Tests: transport pre-flight rejects
+  an unwritable token (chmod in tmp_path); setup.sh smoke asserts the check line.
 
 ## Phase 3 — Persona
 
