@@ -54,7 +54,7 @@ Later `up`s reuse the build cache; a ref bump rebuilds only changed layers.
 |---|---|---|
 | `~/.hermes` | `/opt/data` | Hermes home: `config.yaml`, `SOUL.md` (installed by `scripts/setup.sh`), profiles, sessions, cron state. Survives image updates. |
 | `./src/coordinator` | `/opt/data/plugins/coordinator` (read-only) | Our coordinator plugin, mounted into the user-plugin directory (upstream: user plugins live under `<HERMES_HOME>/plugins/`). |
-| `./data` | `/opt/data/workspace` | Our runtime state: `data/hermes/hermes-coord.db` (members/checkins/settings + knowledge cache) and `data/project/` (the agent workspace — AGENTS.md, journal/, inbox/). Gitignored; never commit. |
+| `./data` | `/opt/data/workspace` | Our runtime state: `data/hermes/hermes-coord.db` (members/checkins/settings + knowledge cache) and `data/project/` (the agent workspace — AGENTS.md, journal/, inbox/; authored files are uploaded to Drive via $GAPI, not mirrored). Gitignored; never commit. |
 
 `docker compose config` is valid while `data/` does not exist yet — bind mounts
 are only materialized at `up`.

@@ -1030,7 +1030,7 @@ def test_setting_set_happy_path() -> None:
 
 
 def test_setting_set_rejects_unknown_key() -> None:
-    """Only the three DEFAULTS keys are settable; the summary names the valid keys."""
+    """Only the two DEFAULTS keys are settable; the summary names the valid keys."""
     members, checkins, settings, clock = _wire()
 
     result = setting_set({"key": "theme", "value": "dark"}, members, checkins, settings, clock)

@@ -259,7 +259,7 @@ def test_register_tools_records_exactly_ten_registrations() -> None:
 
 
 def test_every_schema_is_well_formed() -> None:
-    """All 7 schemas: type object, dict properties, list required, required inside properties."""
+    """All ten schemas: type object, dict properties, list required, required inside properties."""
     for name, spec in TOOL_SPECS.items():
         schema = spec["schema"]
         assert schema["type"] == "object", name
@@ -280,6 +280,9 @@ def test_tool_specs_cover_exactly_the_ten_tools() -> None:
         ("checkins_by_date", handlers.checkins_by_date),
         ("setting_get", handlers.setting_get),
         ("setting_set", handlers.setting_set),
+        ("member_delete", handlers.member_delete),
+        ("knowledge_sync", handlers.knowledge_sync),
+        ("knowledge_search", handlers.knowledge_search),
     ):
         assert TOOL_SPECS[name]["handler"] is handler, name
 

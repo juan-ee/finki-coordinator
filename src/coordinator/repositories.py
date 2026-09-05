@@ -167,7 +167,10 @@ class KnowledgeRepository(Protocol):
         ...
 
     def search(self, query: str, limit: int) -> list[KnowledgeHit]:
-        """Return the top FTS5 hits (bm25, title 10:1 over body) for the query."""
+        """Return the top FTS5 hits (bm25, title 10:1 over body) for the query.
+
+        Raises KnowledgeSearchError when the query is not a valid FTS5 MATCH query.
+        """
         ...
 
 

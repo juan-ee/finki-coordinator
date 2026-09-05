@@ -1,5 +1,5 @@
 """Smoke tests for scripts/setup.sh: bash syntax, no-write --dry-run, and the
-first-boot project-template seed (step 7) that never overwrites existing files."""
+first-boot project-template seed (step 6) that never overwrites existing files."""
 
 import os
 import shutil
