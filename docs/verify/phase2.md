@@ -48,16 +48,15 @@ decides).
       setting_get/set) — matches the static TOOL_SPECS registry; `hermes plugins
       list` shows `coordinator` enabled (source: user). *(v6 evidence — superseded by
       the v6.1 re-check below.)*
-- [ ] **v6.1 re-check (after T2.18–T2.23):** the container carries the 9-tool plugin —
+- [x] **v6.1 re-check (after T2.18–T2.23):** the container carries the 9-tool plugin —
       `git pull` + `docker compose up -d` first (bind mounts apply only at container
       creation), then ask the bot in a DM to list its coordinator tools → exactly
       **9** (`member_add`, `member_update`, `member_list`, `member_delete`,
       `checkin_submit`, `checkins_by_date`, `knowledge_search`, `setting_get`,
       `setting_set`) and **no `knowledge_sync`**. Record: ____________.
-      Headless corroboration (2026-09-05, agent-run in-container census):
-      count 9 — member_add/update/list/delete, checkin_submit, checkins_by_date,
-      knowledge_search, setting_get/set; `knowledge_sync present: False`. The DM
-      listing closes the box.
+      **✓ 2026-09-05:** bot DM listed exactly the 9, grouped
+      roster/check-ins/settings/knowledge — matches the headless census (agent-run
+      in-container: count 9, `knowledge_sync present: False`).
 
 ## 1. $GAPI works in-container — THE FIRST ITEM (STOP if it fails)
 
@@ -192,12 +191,24 @@ that motivated the switch (proposal §11).
 > served straight from the cache. Degraded mode: Drive unreachable → the cache is
 > served and the summary says so — reading never hard-fails.
 
-- [ ] DM: *"Search the knowledge base for decision."* → the hit list includes the
+- [x] DM: *"Search the knowledge base for decision."* → the hit list includes the
       `decisión.md` document (accent-insensitive MATCH on real data).
+      **✓ 2026-09-05:** 10 hits incl. `notes/decisión.md` and the freshly re-indexed
+      CONSOLIDADO doc; the bot reported "cache refreshed just now, 0 failures" —
+      the T2.23 freshness gate fired (stamp `13:55:35Z` → `19:19:11Z`,
+      operator-verified in settings).
 - [ ] DM: *"What exactly does that document say?"* → the agent **reads the live Drive
       original via $GAPI** and quotes it (persona rule 6: the index is a finding aid).
-- [ ] DM: *"Search the knowledge base for ____________"* (the second doc's phrase) →
+      **✗ 2026-09-05 — FAIL as run:** the agent quoted from `~/.hermes/kb_sync/` and
+      only *offered* to pull live originals afterwards — the designed order is
+      live-read BEFORE quoting. Root cause (see deviations): a runtime-only,
+      agent-authored skill (`~/.hermes/skills/coordinator-operations/`) tells the bot
+      "a synced copy of the cache lives under `~/kb_sync/`"; the runtime SOUL.md is
+      also stale (predates persona rule 6). Re-run the ask after the runtime hygiene
+      fix closes the box.
+- [x] DM: *"Search the knowledge base for ____________"* (the second doc's phrase) →
       found, correct document identified.
+      **✓ 2026-09-05:** "be happy everyday" → 1 hit, `notes/decision.md`.
 
 ## 4. FTS5 integrity-check (INDEX health)
 
@@ -286,6 +297,35 @@ docker compose exec gateway python3 -c "import sqlite3; c = sqlite3.connect('/op
 - [ ] Operator signature: ____________ (chat-signed ____________)
 
 Deviations observed (if any):
+
+- 2026-09-05 (step-3 run) — **RUNTIME DRIFT BUNDLE** (root cause of the step-3 fail):
+  (a) runtime `~/.hermes/SOUL.md` is STALE — 142 lines vs the repo persona's 157; it
+  predates the T2.8/T2.9/T2.16 persona additions (knowledge rule 6, onboarding rule).
+  setup.sh installed it once on boot day; nothing re-installs it after persona edits.
+  (b) `~/.hermes/skills/coordinator-operations/` is a runtime-only, agent-authored
+  skill (mtime today, not in the repo) that tells the bot "a synced copy of the cache
+  lives under `~/kb_sync/` — read the synced file for a quick look" — directly causing
+  the local-copy quote; it also documents a legacy direct-DB member-removal procedure
+  (design-forbidden; the phase-1 gate removed a bot-authored skill of this class) and
+  a `cronjob action: update` quirk that contradicts our name-based `edit` relay
+  (phase-1 upstream evaluation verified name-based edit at this pin — likely a wrong
+  verb in the skill). (c) `~/.hermes/kb_sync/` holds stale staging (`batch_*.json`)
+  from the retired agent-mediated sync — not a v6.1 artifact; the CONSOLIDADO edit is
+  NOT in it, so quoting from it serves pre-edit text. (d) Our repo skills
+  (`prompts/skills/*`) are not installed into the runtime skill store at all — the
+  template never had an install step; the runtime made up its own.
+  **Fix bundle (owner-approved, agent-run):** re-run `scripts/setup.sh` (re-installs
+  SOUL.md from the repo persona + re-asserts the config baseline), remove the
+  agent-authored skill after salvaging its lessons into the repo, delete the stale
+  `kb_sync/` staging, then re-run the step-3 asks. Repo-side follow-up (T2.25, after
+  the gate): knowledge SKILL.md gains the auto-refresh-on-search line + "ids are
+  internal — render paths/titles, never raw file_ids" + an explicit "never read local
+  kb_sync-style copies"; template decision on installing `prompts/skills/*` into the
+  runtime skill store (owner call).
+- 2026-09-05 (step-3 run): the bot relayed the raw Drive `file_id` to the human in the
+  search-hit prose. `file_id` is in the tool payload by design (the agent's handle for
+  $GAPI confirm reads); rendering it in chat is a prompt-level miss — no repo guidance
+  says the ids are internal. Queued for the T2.25 follow-up above.
 
 - 2026-09-05 (T2.21 doc refresh): the gate re-based on the v6.1 deterministic sync —
   pre-flight gains the 9-tool re-check; step 2's round-trip/no-op are re-verified
