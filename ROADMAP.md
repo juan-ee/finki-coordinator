@@ -438,7 +438,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   runbook line + docker/README note; conversational creation is the operator path).
   Acceptance: `make sync` performs a real round on the Pi; `hermes cron list` shows
   the nightly job.
-- [ ] **T2.20 Remove the `knowledge_sync` tool (toolset 10 → 9)** — delete the
+- [x] **T2.20 Remove the `knowledge_sync` tool (toolset 10 → 9)** — delete the
   TOOL_SPECS entry + `knowledge_sync` handler + its tests; rewrite
   `prompts/skills/knowledge/SKILL.md`'s sync section (cache refreshed by script/cron;
   the agent only reads) **and make the post-upload write-through mandatory in its
@@ -519,6 +519,19 @@ Pi/human; the agent only produces/refreshes the verification script.
 
 *(agents append here: date, task, deviation/observation)*
 
+- 2026-09-05 T2.20 — review verdict: no hard violations (both axes, fixed point
+  deb1f1e). Arbitrations applied: (1) the deleted B5 "watermark advances" half is
+  pinned literally again (empty + whitespace script tests assert repo.watermark());
+  (2) canonical_modified_time's docstring refreshed — the raw-store fallback phrasing
+  described no production path since the T2.18 fix round (T2.18 note 6's "until
+  T2.20"); (3) stale "seven_tools" test names in the touched manifest test renamed.
+  Ruling recorded, NOT actioned: proposal.md §1 still carries the v6-era 10-tool /
+  knowledge_sync text (lines 64/125-127; §10 line 585 is changelog history) — proposal
+  is not a named file of this task and DoD forbids unsanctioned proposal edits; §11
+  already documents the 10 → 9 change. Owner call whether to amend §1 in a docs task.
+  Acceptance evidence: make check green (350 tests); in-container census on the Pi
+  (after git pull + docker compose up -d) prints 9 tools, knowledge_sync absent;
+  two-call scan of prompts/, README.md, AGENTS.md, src/, scripts/, config/ clean.
 - 2026-09-05 T2.19 — review verdict: no hard violations (spec axis, fixed point dce8afa).
   Judgement calls: (1) the compose file-level mount
   ./scripts/sync_knowledge.py:/opt/data/scripts/sync_knowledge.py:ro is beyond the

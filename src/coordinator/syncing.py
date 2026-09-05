@@ -29,8 +29,9 @@ def canonical_modified_time(value: str) -> str:
     A trailing Z is read as +00:00, an explicit offset is converted to UTC, and a
     timestamp without an offset is treated as UTC (the cache is UTC-anchored, and
     naive astimezone() would smuggle in the host's locale). An unparseable value is
-    returned unchanged - the documented fallback that keeps bad Drive metadata
-    visible in the cache instead of silently rewriting it. Canonical values are
+    returned unchanged - the caller decides what that means (the sync script SKIPS
+    such files with a surfaced reason, so nothing stores a timestamp the derived
+    watermark could not order). Canonical values are
     fixed-width UTC strings, so string ORDER over them is chronological order - the
     invariant that makes both the watermark's SQL MAX and this module's comparisons
     honest across the mixed RFC3339 forms Drive reports.

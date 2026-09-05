@@ -102,7 +102,7 @@ def test_manifest_validates_against_discovery_schema() -> None:
     jsonschema.validate(_load_manifest(), MANIFEST_SCHEMA)
 
 
-def test_manifest_declares_exactly_the_seven_tools() -> None:
+def test_manifest_declares_exactly_the_tool_specs() -> None:
     """provides_tools matches TOOL_SPECS exactly so plugin listing cannot drift."""
     manifest = _load_manifest()
     declared = manifest["provides_tools"]
@@ -124,7 +124,7 @@ def test_register_entrypoint_takes_a_single_positional_ctx() -> None:
     signature.bind(object())  # raises TypeError if any further arg is required
 
 
-def test_register_wires_runtime_store_and_registers_seven_tools(
+def test_register_wires_runtime_store_and_registers_every_tool(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """register(ctx) builds the runtime repo stack at the runtime layout and registers."""

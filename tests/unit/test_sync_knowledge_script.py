@@ -286,6 +286,7 @@ def test_empty_text_file_gets_title_path_only_row(db_path: Path, repo: Knowledge
 
     assert outcome.ingested == 5
     assert [h.file_id for h in repo.search("Empty", limit=5)] == ["f-empty"]
+    assert repo.watermark() == "2026-09-02T00:00:00Z"  # the trace advances the watermark
 
 
 def test_whitespace_only_text_file_stores_title_path_only_row(
@@ -308,6 +309,7 @@ def test_whitespace_only_text_file_stores_title_path_only_row(
     assert len(hits) == 1 and hits[0].file_id == "f-ws"
     rows = [row for row in _rows(db_path) if row[1] == "f-ws"]
     assert len(rows) == 1 and rows[0][2] == ""
+    assert repo.watermark() == "2026-09-05T00:00:00Z"  # the trace advances the watermark
 
 
 def test_duplicate_file_id_across_folders_ingests_once(db_path: Path, repo: KnowledgeRepo) -> None:
