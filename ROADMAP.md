@@ -505,7 +505,11 @@ Pi/human; the agent only produces/refreshes the verification script.
   venv for the coordinator imports, gapi venv for the CLI); the T2.23 freshness
   gate's subprocess already resolves this, reuse its form, and put the line in the
   knowledge SKILL.md (may absorb into T2.25); (e) runbook adjacency: token-
-  permissions troubleshooting lands with T4.2. Tests: transport pre-flight rejects
+  permissions troubleshooting lands with T4.2. (f) ROOT CAUSE of the root-owned
+  token found in-gate: `docker compose exec` defaults to root in this container —
+  document the `--user 1000` requirement for any token-writing command (OAuth,
+  checks), add the guard to setup.sh's printout, and evaluate pinning the exec
+  user at the compose level. Tests: transport pre-flight rejects
   an unwritable token (chmod in tmp_path); setup.sh smoke asserts the check line.
 
 ## Phase 3 — Persona
