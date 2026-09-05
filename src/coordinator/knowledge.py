@@ -16,8 +16,11 @@ def chunk_markdown(body: str) -> list[Chunk]:
 
     Content before the first '## ' becomes a single None-heading preamble chunk; a
     document without any '## ' heading is one chunk; a blank document yields no chunks;
-    duplicate headings get an occurrence suffix ("Notes (2)") so the cache's
-    UNIQUE(file_id, heading) constraint can hold. Bodies are stripped at the edges.
+    duplicate headings are disambiguated in document order against a used-set so the
+    cache's UNIQUE(file_id, heading) constraint can hold: the first occurrence keeps
+    its literal name, and a taken heading (literal or already suffixed) gets the first
+    free occurrence suffix ("Notes", "Notes (2)", "Notes (3)", or "Notes (2) (2)" when
+    a literal "Notes (2)" arrives after a generated one). Bodies are stripped at the edges.
     '## ' lines inside a ``` / ~~~ code fence are body text, not headings: a fence
     line (leading ``` or ~~~, trailing text allowed) toggles fence state, and an
     unclosed fence suppresses splits to the end of the document.
@@ -41,15 +44,18 @@ def chunk_markdown(body: str) -> list[Chunk]:
         regions[-1].append(line)
 
     chunks: list[Chunk] = []
-    occurrences: dict[str, int] = {}
+    used: set[str] = set()
     for heading, region in zip(headings, regions):
         text = "\n".join(region).strip()
         if heading is None:
             if text == "":
                 continue  # blank lines before the first heading are not a preamble
         else:
-            occurrences[heading] = occurrences.get(heading, 0) + 1
-            if occurrences[heading] > 1:
-                heading = f"{heading} ({occurrences[heading]})"
+            if heading in used:  # literal or generated: first come keeps its name
+                n = 2
+                while f"{heading} ({n})" in used:
+                    n += 1
+                heading = f"{heading} ({n})"
+            used.add(heading)
         chunks.append(Chunk(heading=heading, body=text))
     return chunks

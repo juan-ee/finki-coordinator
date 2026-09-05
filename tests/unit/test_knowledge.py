@@ -82,6 +82,28 @@ def test_chunker_duplicate_headings_get_occurrence_suffixes() -> None:
     assert [c.heading for c in chunks] == ["Notes", "Notes (2)", "Notes (3)"]
 
 
+def test_chunker_literal_suffixed_heading_gets_further_suffix() -> None:
+    """A literal 'Notes (2)' after a generated one is re-suffixed, never colliding.
+
+    Review finding (hard): the old occurrence counter keyed on literal headings,
+    so this document yielded two 'Notes (2)' chunks and broke UNIQUE(file_id, heading).
+    """
+    body = "## Notes\na\n## Notes\nb\n## Notes (2)\nc\n"
+
+    chunks = chunk_markdown(body)
+
+    assert [c.heading for c in chunks] == ["Notes", "Notes (2)", "Notes (2) (2)"]
+
+
+def test_chunker_duplicate_skips_past_a_literal_suffixed_heading() -> None:
+    """A literal 'Notes (2)' first keeps its name; later duplicates skip past it."""
+    body = "## Notes (2)\nx\n## Notes\ny\n## Notes\nz\n"
+
+    chunks = chunk_markdown(body)
+
+    assert [c.heading for c in chunks] == ["Notes (2)", "Notes", "Notes (3)"]
+
+
 def test_chunker_fenced_heading_lines_do_not_split() -> None:
     """A '## ' line inside a code fence is body text, never a section heading."""
     body = "## Real\nintro\n```\n## fake heading inside fence\n```\ntail"
@@ -185,6 +207,25 @@ def test_replace_file_twice_reindexes_idempotently(conn: sqlite3.Connection) -> 
     assert len(hits) == 1
     rows = list(conn.execute("SELECT count(*) AS n FROM knowledge WHERE file_id = 'f1'"))
     assert rows[0]["n"] == 1
+
+
+def test_replace_file_indexes_literal_suffixed_duplicate_headings(
+    conn: sqlite3.Connection,
+) -> None:
+    """A file mixing generated and literal suffixed headings stays fully indexable.
+
+    Review finding (hard): the colliding headings made replace_file raise
+    UNIQUE constraint failed, leaving the whole document unindexable.
+    """
+    repo = KnowledgeRepo(conn)
+
+    stored = _replace_drive_doc(repo, body="## Notes\na\n## Notes\nb\n## Notes (2)\nc\n")
+
+    assert stored == 3
+    rows = conn.execute(
+        "SELECT heading FROM knowledge WHERE file_id = 'f1' ORDER BY chunk_id"
+    ).fetchall()
+    assert [r["heading"] for r in rows] == ["Notes", "Notes (2)", "Notes (2) (2)"]
 
 
 def test_search_matches_diacritics_insensitively(conn: sqlite3.Connection) -> None:
