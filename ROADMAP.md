@@ -374,7 +374,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   empty-body row; re-ingest of the same file is idempotent; malformed batch rejected.
   README tool line (9).
 
-- [ ] **T2.15 — `knowledge_search` tool + query map (D2)** —
+- [x] **T2.15 — `knowledge_search` tool + query map (D2)** —
   `handlers.knowledge_search` (`query` required non-empty; optional `limit` default
   3, capped at 10) → top chunks `[{file_id, path, title, heading}]`; the tool
   description says to confirm against the LIVE Drive original before quoting — the
@@ -394,7 +394,11 @@ Pi/human; the agent only produces/refreshes the verification script.
   README full pass (10 tools, v6 architecture, quickstart: allow.sh + seed placeholders
   + no rclone, status table); KICKOFF.md's "never touch proposal.md" line updated
   (proposal edits are task-sanctioned in v6). Acceptance: no bisync/rclone/
-  digest_time/status_days references remain anywhere outside audit/history docs.
+  digest_time/status_days references remain anywhere outside audit/history docs —
+  INCLUDING README's old query-map line (search_files under docs/, T2.15 routing)
+  and config.schema.json's drive_root "(rclone bisync root)" description (T2.15
+  routing). Acceptance: make check green on the COMMITTED tree (T2.15 lesson: a
+  working-tree-only change is not done).
 
 - [ ] **T2.17 `DOC` `MANUAL-GATE` — `docs/verify/phase2.md` (v6)** — full rewrite;
   FIRST item verifies `$GAPI` works in-container at our HERMES_REF (DM the agent: list
@@ -947,6 +951,24 @@ Pi/human; the agent only produces/refreshes the verification script.
   documented rather than tightened; (3) the handler-signature polymorphism
   (takes_knowledge + two casts in dispatch) was reviewed as the narrowest mypy-strict
   solution — the 8 non-knowledge handlers keep the uniform 5-dep signature.
+- 2026-09-04 T2.15 — review verdict: spec axis 1 HARD — a PROCESS finding: the
+  generator rewrite existed only as an uncommitted working-tree change (the T2.15
+  commit's own goldens contradicted its committed generator; make check green held
+  only with the uncommitted file) — my git add missed scripts/. FIXED BY AMEND:
+  773a3dc -> 56a8156 (unpushed; the amended committed tree passes make check with a
+  clean worktree, verified). standards axis 0 HARD + 6 judgement. Also added:
+  people/ parity in the generator's Drive tree (proposal §3). Judgement calls:
+  (1) README's old query-map line (search_files) and config.schema.json's drive_root
+  "(rclone bisync root)" routed explicitly into T2.16's acceptance sweep; (2) new
+  public callables (knowledge_search, KnowledgeRepo.search, knowledge_sync,
+  member_delete) carry multi-line docstrings — rule 6 letter vs practice, consistent
+  with pre-existing db.py precedent; (3) malformed-MATCH routing into T2.15's block
+  done (ok:False at the tool layer, verified); (4) KnowledgeRepository.search
+  Protocol docstring does not mention the KnowledgeSearchError raise the concrete
+  class documents — coverage nit, tighten opportunistically; (5) proposal.md:373 and
+  ROADMAP T5.1 mention search_files as deferred/source-of-truth docs — excluded from
+  the sweep by design.
+
 - 2026-09-04 T2.6 — review verdict: standards axis 2 HARD (the documented local-seed
   path was not actually gitignored — guidance claimed "gitignored" with no rule;
   multi-line test docstring vs rule 6); spec axis PASS with the gitignore gap as a
