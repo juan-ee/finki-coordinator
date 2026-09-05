@@ -340,7 +340,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   the `docker/README.md` mounts-table "rclone-bisynced project mirror" line (T2.11
   routing, parity with the compose comment).
 
-- [ ] **T2.13 — Knowledge tables + chunker (D2)** — `schema.sql` gains `knowledge` +
+- [x] **T2.13 — Knowledge tables + chunker (D2)** — `schema.sql` gains `knowledge` +
   `knowledge_fts` exactly per proposal §1 (external-content FTS5,
   `unicode61 remove_diacritics 2`, `UNIQUE(file_id, heading)`); versioned migration
   003 (IF NOT EXISTS forms; fresh+upgrade convergence test like T2.10); new pure module
@@ -383,7 +383,8 @@ Pi/human; the agent only produces/refreshes the verification script.
   Drive brief; questions → knowledge_search then live read; status → journal/ +
   checkins_by_date; tasks → kanban; who → member_list) + golden tests updated. Tests
   FIRST: tool missing (red); validation; ranking through the tool layer; golden
-  render.
+  render; malformed MATCH queries (raw sqlite3.OperationalError from the repo search
+  primitive — T2.13 review) must surface as ok:False actionable summaries.
 
 - [ ] **T2.16 `DOC` — persona/skills knowledge guidance + coherence pass** —
   `prompts/persona.md`: knowledge rules (search the index, then read the live Drive
@@ -906,6 +907,29 @@ Pi/human; the agent only produces/refreshes the verification script.
   temporarily stale until T2.17 writes the gate — same doc-forward-by-design class as
   T2.11 note (5); (4) Notes-level residue: test_setup_smoke.py:2 module docstring
   still says "step 7" after the 7->6 renumber (one-word cosmetic).
+- 2026-09-04 T2.13 — review verdict: spec axis 2 HARD (the specced out-of-band-DELETE
+  integrity test was missing — replaced by an insert-direction variant justified by a
+  wrong version claim; the knowledge convergence was unpinned), standards axis 1 HARD
+  (heading-suffix collision: a literal "## Notes (2)" in source markdown collided with
+  the generated suffix -> UNIQUE IntegrityError -> file unindexable) + 1 J later
+  resolved (fence-awareness, 19775e8). TWO fix rounds: 19775e8 (delete-direction test
+  added on the suite's SQLite 3.50.4, convergence pin extended to knowledge columns —
+  verified red both ways on DDL drift, fence-aware chunker, proposal version claim
+  corrected) and 4d2f4f8 (collision-proof document-order used-set suffix resolution,
+  red-first + exhaustive 1,364-document sweep collision-free and deterministic across
+  PYTHONHASHSEED). Delta re-reviews: FIXED, no regressions; make check green (293).
+  Arbitration + judgement calls: (1) the proposal.md integrity-check edit was
+  unauthorized by the block but factually correct on both SQLite builds — BLESSED and
+  disclosed here rather than reverted (reverting a verified correction serves no one);
+  (2) non-text-document branch is T2.14-owned (its block names the absent-content
+  row); (3) residual CommonMark fence gaps (nested fences, closing fence with trailing
+  text, indented fences) are Notes-level — documented toggle semantics, not a breach;
+  (4) watermark is lexicographic MAX — valid only for Drive's Z-normalized RFC3339
+  modifiedTime, documented assumption; (5) UNIQUE(file_id, heading) holds for NULL
+  headings via the chunker's at-most-one-preamble invariant, not the constraint;
+  (6) malformed MATCH raises OperationalError from the repo primitive — routed into
+  T2.15's block (ok:False at the tool layer); (7) hygiene: .scratch/ review-probe
+  debris gitignored so a bare make check passes in the working tree.
 - 2026-09-04 T2.6 — review verdict: standards axis 2 HARD (the documented local-seed
   path was not actually gitignored — guidance claimed "gitignored" with no rule;
   multi-line test docstring vs rule 6); spec axis PASS with the gitignore gap as a
