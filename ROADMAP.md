@@ -400,7 +400,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   routing). Acceptance: make check green on the COMMITTED tree (T2.15 lesson: a
   working-tree-only change is not done).
 
-- [ ] **T2.17 `DOC` `MANUAL-GATE` — `docs/verify/phase2.md` (v6)** — full rewrite;
+- [ ] **T2.17 `DOC` `MANUAL-GATE` — `docs/verify/phase2.md` (v6)** *(gate doc written 2026-09-04, commit c772332; awaiting the human on the Pi — step 1 is the $GAPI STOP gate)* — full rewrite;
   FIRST item verifies `$GAPI` works in-container at our HERMES_REF (DM the agent: list
   the Drive root via the google-workspace skill) — **if it fails: STOP the phase and
   report to the owner; no workarounds.** Then: knowledge_sync incremental round-trip
@@ -951,6 +951,24 @@ Pi/human; the agent only produces/refreshes the verification script.
   documented rather than tightened; (3) the handler-signature polymorphism
   (takes_knowledge + two casts in dispatch) was reviewed as the narrowest mypy-strict
   solution — the 8 non-knowledge handlers keep the uniform 5-dep signature.
+- 2026-09-04 T2.17 — MANUAL-GATE doc written (box stays UNCHECKED for the human).
+  Phase-gate red team (AGENTS.md #4) attacked the knowledge subsystem: 13 attack
+  tests, 6 real bugs — B1 lone-surrogate bind failure skipped the rollback and
+  poisoned the shared conn (next sync silently committed the deletes: cache loss),
+  B2 NUL-truncated MATCH returned wrong hits, B3 fence toggle ignored type/run
+  length, B4 splitlines over-split (U+2028/2029/NEL/VT/FF), B5 empty-content files
+  vanished from the cache and starved the watermark, B6 lexicographic watermark
+  mis-ranked offset forms. Adoption fix ad2d00a: rollback-on-BaseException in
+  replace_file, C0-char query guard at the tool layer, CommonMark fence rule,
+  markdown-only line splitting, title/path-only rows for absent/empty/whitespace
+  content, UTC-canonical modified_time at ingest; all 13 attacks adopted as
+  regression tests (tests/unit/test_knowledge_redteam.py, red-first). Delta
+  re-review: FIXED, no regressions; make check green (325). Judgement calls:
+  (1) encode-failures still propagate out of knowledge_sync (payload encoding is
+  not payload validation) but per-file commits + rollback keep the store consistent
+  — UX polish is a Notes candidate; (2) the NUL guard lives at the tool layer — the
+  repo primitive still truncates at NUL by SQLite design (only the handler calls it);
+  (3) docs/verify/phase2.md is the T2.17 deliverable — the human runs it on the Pi.
 - 2026-09-04 T2.15 — review verdict: spec axis 1 HARD — a PROCESS finding: the
   generator rewrite existed only as an uncommitted working-tree change (the T2.15
   commit's own goldens contradicted its committed generator; make check green held
