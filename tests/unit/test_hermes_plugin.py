@@ -36,6 +36,7 @@ TOOL_NAMES = frozenset(
         "setting_get",
         "setting_set",
         "knowledge_sync",
+        "knowledge_search",
     }
 )
 
@@ -66,6 +67,7 @@ EXPECTED_FIELDS: dict[str, tuple[dict[str, str], list[str]]] = {
     "member_list": ({"active": "integer"}, []),
     "member_delete": ({"member_id": "integer"}, ["member_id"]),
     "knowledge_sync": ({"files": "array"}, []),
+    "knowledge_search": ({"limit": "integer", "query": "string"}, ["query"]),
     "checkin_submit": (
         {
             "member_id": "integer",
@@ -235,7 +237,7 @@ def _wire() -> tuple[MembersRepository, CheckinsRepository, SettingsRepository, 
 # --- register_tools -------------------------------------------------------------------
 
 
-def test_register_tools_records_exactly_nine_registrations() -> None:
+def test_register_tools_records_exactly_ten_registrations() -> None:
     """register_tools() calls ctx.register_tool once per TOOL_SPECS entry, all coordinator."""
     ctx = FakeCtx()
     members, checkins, settings, clock = _wire()
@@ -245,7 +247,7 @@ def test_register_tools_records_exactly_nine_registrations() -> None:
     )
 
     names = [call["name"] for call in ctx.calls]
-    assert len(ctx.calls) == 9
+    assert len(ctx.calls) == 10
     assert set(names) == TOOL_NAMES
     assert len(set(names)) == len(names)  # exactly one registration per tool
     assert all(call["toolset"] == "coordinator" for call in ctx.calls)
@@ -267,8 +269,8 @@ def test_every_schema_is_well_formed() -> None:
         assert schema["additionalProperties"] is False, name
 
 
-def test_tool_specs_cover_exactly_the_nine_tools() -> None:
-    """TOOL_SPECS has exactly the nine tool names, each wired to its handlers.py function."""
+def test_tool_specs_cover_exactly_the_ten_tools() -> None:
+    """TOOL_SPECS has exactly the ten tool names, each wired to its handlers.py function."""
     assert set(TOOL_SPECS) == TOOL_NAMES
     for name, handler in (
         ("member_add", handlers.member_add),
@@ -354,7 +356,7 @@ def test_registered_schemas_carry_the_model_facing_description() -> None:
         ctx, members=members, checkins=checkins, settings=settings, clock=clock, knowledge=None
     )
 
-    assert len(ctx.calls) == 9
+    assert len(ctx.calls) == 10
     for call in ctx.calls:
         schema = call["schema"]
         assert isinstance(schema, dict), call["name"]
@@ -524,4 +526,4 @@ def test_module_imports_with_hermes_absent() -> None:
 
     assert module is hermes_plugin
     assert "hermes" not in sys.modules  # the adapter pulled in no Hermes at import time
-    assert len(TOOL_SPECS) == 9
+    assert len(TOOL_SPECS) == 10

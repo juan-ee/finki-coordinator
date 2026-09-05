@@ -23,6 +23,7 @@ from .repositories import (
     DEFAULTS,
     CheckinsRepository,
     KnowledgeRepository,
+    KnowledgeSearchError,
     MembersRepository,
     SettingsRepository,
 )
@@ -52,6 +53,7 @@ _DATE_FIELDS = frozenset({"date"})
 _KEY_FIELDS = frozenset({"key"})
 _SET_FIELDS = frozenset({"key", "value"})
 _SYNC_FIELDS = frozenset({"files"})
+_SEARCH_FIELDS = frozenset({"query", "limit"})
 
 # One knowledge_sync ingest entry: four required strings + optional text content
 # (absent/None = non-text file — title/path-only row, audit second-pass rule).
@@ -679,3 +681,48 @@ def knowledge_sync(
     data = {"synced": len(validated), "watermark": watermark}
     summary = f"{len(validated)} file(s) synced into the knowledge cache"
     return _result(True, summary, None, data)
+
+
+def knowledge_search(
+    payload: dict[str, object],
+    members: MembersRepository,
+    checkins: CheckinsRepository,
+    settings: SettingsRepository,
+    clock: Clock,
+    knowledge: KnowledgeRepository,
+) -> dict[str, object]:
+    """Search the local knowledge cache (FTS5) - a finding aid, not the record (D2).
+
+    Returns the top chunks (file_id/path/title/heading) ordered by bm25 with the
+    title weighted 10:1 over the body; the agent confirms against the LIVE Drive
+    original (via $GAPI) before quoting. limit defaults to 3 and is capped at 10.
+    A malformed query surfaces as ok:False, never as a raw sqlite error.
+    """
+    del members, checkins, settings  # uniform handler signature; the cache is external
+    error = _reject_unknown(payload, _SEARCH_FIELDS) or _require_str(payload, "query")
+    if error is not None:
+        return _fail(error)
+    limit = payload.get("limit")
+    if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int)):
+        return _fail("field 'limit' must be an integer")
+    if limit is not None and limit < 1:
+        return _fail("field 'limit' must be >= 1")
+    query = cast("str", payload["query"])
+    effective = 3 if limit is None else min(limit, 10)
+    try:
+        hits = knowledge.search(query, effective)
+    except KnowledgeSearchError as exc:
+        return _fail(f"search failed: {exc} - plain words work best (the query is an FTS5 MATCH)")
+    data: dict[str, object] = {
+        "query": query,
+        "results": [
+            {
+                "file_id": hit.file_id,
+                "path": hit.path,
+                "title": hit.title,
+                "heading": hit.heading,
+            }
+            for hit in hits
+        ],
+    }
+    return _result(True, f"{len(hits)} hit(s) for {query!r}", None, data)

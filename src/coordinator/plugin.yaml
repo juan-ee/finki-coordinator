@@ -18,4 +18,5 @@ provides_tools:
   - checkins_by_date
   - setting_get
   - setting_set
+  - knowledge_search
   - knowledge_sync

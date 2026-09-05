@@ -6,7 +6,7 @@ database and writes the markdown file — and delegates the content to the pure
 ``render(members)``. Output is deterministic by construction (AGENTS.md rule 5): no
 timestamps, no clock, nothing volatile, so a re-run over the same database is
 byte-identical and simply overwrites the output file in place. telegram_id (or any
-other secret) is never rendered: the runtime file syncs to a shared Drive.
+other secret) is never rendered: the runtime file is uploaded to the shared Drive.
 """
 
 from __future__ import annotations
@@ -49,52 +49,57 @@ here on the next regeneration.)*
 """
 
 _STRUCTURE = """
-## Project folder structure
+## Project layout: Drive is the record; this folder is the agent workspace
 
-`data/project/` mirrors the team's Shared Drive via rclone bisync (`project/**`). The
-gateway runs with `data/project` as its working directory, so this file is injected into
-sessions automatically.
+The team's shared documents live on **Google Drive** (`docs/product/brief.md`,
+`docs/decisions/`, `docs/meetings/`, `docs/howto/`, `assets/`) — Drive is the record.
+`data/project/` is the bot's local workspace: the gateway runs with it as working
+directory, so this file is injected into sessions automatically. Drive documents are
+cached locally by `knowledge_sync` and searched with `knowledge_search`; the cache is
+rebuildable from Drive at any time.
 
 ```text
-data/project/
-├── AGENTS.md                        ← GENERATED (roster + structure + query map)
-├── README.md                        ← human onboarding; static
-├── docs/                            ← long-lived knowledge
-│   ├── index.md                     ← curated map of docs/ (reviewed monthly)
-│   ├── product/                     ← specs, roadmap, user research
-│   │   └── brief.md                 ← what we're thriving for — read it first
-│   ├── decisions/                   ← ADRs: 0001-kebab-case.md, 0002-… (numbered)
-│   ├── meetings/                    ← 2026-08-28-sync.md (template in templates/)
-│   └── howto/                       ← operational playbooks (dev, deploy, tooling)
-├── journal/                         ← GENERATED daily digests (from checkins table)
-├── inbox/                           ← drop zone: anything unfiled (agent triages weekly)
-├── templates/                       ← brief.md · adr.md · meeting-notes.md · proposal.md
-├── assets/                          ← images, diagrams, binaries
-├── people/                          ← optional per-member notes (never the roster)
-└── .archive/                        ← moved, never deleted (agent's curator pass)
+Google Drive (the record — team-edited):
+├── docs/product/brief.md             ← mission — read it before any major ask
+├── docs/decisions/                   ← ADRs (numbered)
+├── docs/meetings/                    ← dated notes
+├── docs/howto/                       ← operational playbooks
+├── assets/                           ← images, binaries
+├── people/                           ← optional per-member notes (never the roster)
+
+data/project/ (agent workspace — local):
+├── AGENTS.md                         ← GENERATED (roster + layout + query map)
+├── README.md                         ← human onboarding; static
+├── journal/                          ← daily digests: written here, uploaded to Drive
+├── inbox/                            ← drop zone: anything unfiled (weekly triage)
+├── templates/                        ← brief.md · adr.md · meeting-notes.md
+└── .archive/                         ← moved, never deleted
 ```
 """
 
 _QUERY_MAP = """
 ## Query map
 
-- **Mission & goals** → `docs/product/brief.md` — read it before any major ask.
-- **Project questions** → `search_files` under `docs/` (product/decisions/meetings/howto).
+- **Mission & goals** → `docs/product/brief.md` on Drive — read it before any major ask.
+- **Project questions** → `knowledge_search`, then confirm against the LIVE Drive
+  original before quoting — the index is a finding aid; Drive is current truth.
 - **Status & activity** → `journal/` by date, or the `checkins_by_date` tool.
 - **Tasks** → the `kanban_*` tools — never files.
 - **What's new** → `inbox/` triage.
 - **Who & availability** → `member_list` — never a file.
-- **Templates** → live in `templates/`.
+- **Templates** → live in `templates/` (local).
 """
 
 _POLICY = """
 ## Editorial policy
 
 - File the drafts you author into `inbox/` — never write into `docs/` directly.
-- Weekly triage moves inbox drafts into `docs/**` and posts a "what I filed" summary to
-  the group.
-- `journal/`, `inbox/` and `.archive/` are agent-writable; `docs/` placement always goes
-  through triage.
+- Weekly triage moves inbox drafts into the Drive `docs/**` (via $GAPI upload) and
+  posts a "what I filed" summary to the group.
+- Journals and digests you write are uploaded to Drive after writing ($GAPI drive
+  upload) — Drive's version history is the conflict safety net.
+- `journal/`, `inbox/` and `.archive/` are agent-writable; Drive `docs/` placement
+  always goes through triage.
 """
 
 _TABLE_HEADER = "| Name | Timezone | Wake | Role | Active |\n|---|---|---|---|---|\n"

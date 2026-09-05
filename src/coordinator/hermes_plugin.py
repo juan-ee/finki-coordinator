@@ -33,6 +33,7 @@ from .handlers import (
     Clock,
     checkin_submit,
     checkins_by_date,
+    knowledge_search,
     knowledge_sync,
     member_add,
     member_delete,
@@ -270,6 +271,26 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
             "additionalProperties": False,
         },
         "handler": knowledge_sync,
+        "toolset": "coordinator",
+        "takes_knowledge": True,
+    },
+    "knowledge_search": {
+        "description": (
+            "Search the local knowledge cache (SQLite FTS5) for team documents; returns"
+            " the top hits (file_id/path/title/heading). The cache is a finding aid -"
+            " confirm against the LIVE Drive original (via $GAPI) before quoting."
+            " limit defaults to 3 and is capped at 10."
+        ),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "limit": {"type": "integer"},
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+        "handler": knowledge_search,
         "toolset": "coordinator",
         "takes_knowledge": True,
     },

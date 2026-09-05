@@ -130,6 +130,10 @@ class SettingsRepository(Protocol):
         ...
 
 
+class KnowledgeSearchError(Exception):
+    """Raised when an FTS5 MATCH query is malformed (translated at the tool layer)."""
+
+
 @dataclass(frozen=True)
 class KnowledgeHit:
     """One search result: the cached chunk's locator (rank is bm25, lower = better)."""
@@ -447,16 +451,23 @@ class KnowledgeRepo:
         return None if row is None or row["m"] is None else str(row["m"])
 
     def search(self, query: str, limit: int) -> list[KnowledgeHit]:
-        """FTS5 MATCH ordered by bm25 (title 10:1 over body); top limit hits."""
-        rows = self._conn.execute(
-            "SELECT k.chunk_id AS chunk_id, k.file_id AS file_id, k.path AS path,"
-            " k.title AS title, k.heading AS heading,"
-            " bm25(knowledge_fts, 10.0, 1.0) AS bm25_rank"
-            " FROM knowledge_fts JOIN knowledge AS k ON k.chunk_id = knowledge_fts.rowid"
-            " WHERE knowledge_fts MATCH ?"
-            " ORDER BY bm25_rank LIMIT ?",
-            (query, limit),
-        ).fetchall()
+        """FTS5 MATCH ordered by bm25 (title 10:1 over body); top limit hits.
+
+        Raises KnowledgeSearchError when the query is not a valid FTS5 MATCH query
+        (the tool layer translates that into an actionable ok:False result).
+        """
+        try:
+            rows = self._conn.execute(
+                "SELECT k.chunk_id AS chunk_id, k.file_id AS file_id, k.path AS path,"
+                " k.title AS title, k.heading AS heading,"
+                " bm25(knowledge_fts, 10.0, 1.0) AS bm25_rank"
+                " FROM knowledge_fts JOIN knowledge AS k ON k.chunk_id = knowledge_fts.rowid"
+                " WHERE knowledge_fts MATCH ?"
+                " ORDER BY bm25_rank LIMIT ?",
+                (query, limit),
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            raise KnowledgeSearchError(f"invalid FTS5 query {query!r}: {exc}") from exc
         return [
             KnowledgeHit(
                 chunk_id=int(row["chunk_id"]),
