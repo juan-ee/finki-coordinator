@@ -151,7 +151,12 @@ other fallback — the v6 design has none on purpose (proposal §6.9).
       deterministic sync script using the plugin's own chunker/repository + gws CLI
       download, wired to hermes cron (restores on-demand AND automatic sync without
       an LLM in the data path). Second no-op sync pending while the agent's repair
-      run settles.
+      run settles. **Final agent report (2026-09-05, run completed):** 19 files / 165
+      chunks / watermark 2026-09-05T09:25:35Z — operator-verified in the DB (19
+      distinct paths AND file_ids; marker scan clean — two apparent "placeholder"
+      hits are false positives: the Spanish customs term "ad-valorem" in
+      Estudio_Mercado_Limpieza_Laser_Ecuador.md). Bot disclosed the placeholder
+      incident unprompted; PDF + Logo correctly title/path-only.
 - [ ] **Second sync is a no-op:** DM *"Sync the knowledge base"* again → the agent
       lists, finds nothing past the watermark, and reports nothing new ingested
       (no duplicate storage).
