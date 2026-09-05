@@ -18,7 +18,7 @@
         "drive_root": {
           "type": "string",
           "minLength": 1,
-          "description": "Folder inside the Shared Drive (rclone bisync root)."
+          "description": "Folder inside the Shared Drive that holds the team documents."
         },
         "timezone": {
           "type": "string",

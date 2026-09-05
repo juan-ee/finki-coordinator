@@ -6,10 +6,10 @@ settings with UTC-anchored, timezone-safe cron scheduling), a Google Shared Driv
 knowledge base managed through Hermes' built-in google-workspace skill ($GAPI) with a
 local SQLite FTS5 index, and an OpenExecutive-derived operator persona.
 
-> 🚧 Under active development — Phase 0 (foundation) and Phase 1 (core bot) are
-> implemented; the Phase-1 manual gate is the current milestone. Knowledge sync
-> (Phase 2), the persona toggle (Phase 3), and hardening (Phase 4) land next
-> ([ROADMAP.md](ROADMAP.md)).
+> 🚧 Under active development — Phase 0 (foundation), Phase 1 (core bot), and the
+> v6 Phase-2 restructure (member lifecycle + knowledge) are implemented; the Phase-2
+> manual gate ($GAPI on the Pi) is the current milestone. Persona (Phase 3) and
+> hardening (Phase 4) land next ([ROADMAP.md](ROADMAP.md)).
 
 ## What you get
 
@@ -26,9 +26,9 @@ local SQLite FTS5 index, and an OpenExecutive-derived operator persona.
   inherits the pin (the drift guard), `TELEGRAM_ALLOWED_USERS` as a static DM gate, model
   choice reserved to the owner.
 - **Runtime `AGENTS.md`** — generated from the roster DB and injected into every session;
-  its query map: mission → `docs/product/brief.md` first, project questions →
-  `search_files` under `docs/`, status → `journal/` + `checkins_by_date`, tasks → the
-  `kanban_*` tools.
+  its query map: mission → the Drive brief first, project questions → `knowledge_search`
+  (then confirm against the live Drive file), status → `journal/` + `checkins_by_date`,
+  tasks → the `kanban_*` tools.
 - **Check-in & digest skills**, an operator persona (`prompts/persona.md` → `SOUL.md`),
   and a kanban board driven through Hermes' built-in tools.
 - **Google Shared Drive knowledge base (v6)** — the agent is the team's librarian:
@@ -121,8 +121,8 @@ per-phase verification scripts in [`docs/verify/`](docs/verify/).
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Foundation (package, schema, scheduling, compose) | ✅ done |
-| 1 | Core bot (persona, skills, integration day-flow, Pi gate) | 🚧 manual gate |
-| 2 | Member lifecycle & knowledge (v6 — door script, tools, Drive loop) | 🚧 |
+| 1 | Core bot (persona, skills, integration day-flow, Pi gate) | ✅ gate signed off |
+| 2 | Member lifecycle & knowledge (v6 — door script, tools, Drive loop) | 🚧 manual gate |
 | 3 | Persona (toggle, triage rubric, third-party notices) | ⬜ |
 | 4 | Hardening (backup/restore, runbooks) | ⬜ |
 | 5 | Vector-RAG spike — feasibility notes only, deliberately deferred | ⬜ |

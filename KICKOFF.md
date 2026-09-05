@@ -37,7 +37,8 @@ DOC tasks: do them directly (no subagent, no review), mark [x], one-line report.
 
 Rules of engagement:
 - One implementer at a time — never parallel implementers on this repo.
-- Never touch proposal.md or data/. Never commit .env or secrets.
+- Never touch `data/**`. Never commit `.env` or secrets. `proposal.md` is amended
+  only when a task explicitly says so (the v6 restructure tasks do).
 - STOP and report to me when ANY of these happens:
   a) you reach a task tagged MANUAL-GATE (write its docs/verify/phaseN.md script,
      leave the box unchecked, tell me exactly what to do on the Pi),
