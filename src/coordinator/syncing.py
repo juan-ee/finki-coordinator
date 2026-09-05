@@ -109,12 +109,15 @@ def plan_sync(files: list[DriveFile], watermark: str | None, *, resync: bool = F
     Drive-side changes selects nothing (idempotency). Comparison happens between
     canonical fixed-width UTC strings (chronologically honest — see
     canonical_modified_time). A file whose modifiedTime cannot be parsed is SKIPPED
-    with the reason surfaced, never silently ingested (that would break the no-op
-    second run); a resync has no ordering to honor and ingests it anyway, storing the
-    raw value (the documented T2.14 fallback). A stored watermark that cannot be
-    parsed cannot order anything: full selection (rebuild semantics) converges the
-    cache. Folders never reach this function — the listing adapter filters them out.
-    Selections and skips are sorted by (path, file_id) for deterministic reports.
+    with the reason surfaced, in EVERY mode — resync included: storing its raw
+    string would put an unorderable timestamp in the cache, and under SQLite's
+    BINARY MAX it would become the derived watermark, sorting above every real
+    '2026-…' value — so every later incremental round would fall back to full
+    selection and the no-op second run would be lost permanently. A stored
+    watermark that cannot be parsed cannot order anything: full selection (rebuild
+    semantics) converges the cache. Folders never reach this function — the listing
+    adapter filters them out. Selections and skips are sorted by (path, file_id)
+    for deterministic reports.
     """
     canonical_wm: str | None = None
     if watermark is not None and _parse_rfc3339(watermark) is not None:
@@ -127,18 +130,15 @@ def plan_sync(files: list[DriveFile], watermark: str | None, *, resync: bool = F
     for file in files:
         parsed = _parse_rfc3339(file.modified_time)
         if parsed is None:
-            if resync:
-                selected.append(IngestCandidate(file=file, canonical_time=file.modified_time))
-            else:
-                skipped.append(
-                    SkippedFile(
-                        file=file,
-                        reason=(
-                            f"unparseable modifiedTime {file.modified_time!r} —"
-                            " cannot order against the watermark (use --resync to force)"
-                        ),
-                    )
+            skipped.append(
+                SkippedFile(
+                    file=file,
+                    reason=(
+                        f"unparseable modifiedTime {file.modified_time!r} —"
+                        " cannot order against the watermark"
+                    ),
                 )
+            )
             continue
         canonical_time = canonical_modified_time(file.modified_time)
         if not resync and canonical_wm is not None and canonical_time <= canonical_wm:

@@ -100,6 +100,7 @@ class SyncOutcome:
     failed: list[str] = field(default_factory=list)
     dry_run: bool = False
     resync: bool = False
+    actual_watermark: str | None = None
 
 
 class GapiCliTransport:
@@ -210,6 +211,12 @@ def list_drive_files(transport: DriveTransport) -> list[syncing.DriveFile]:
             if mime == _FOLDER_MIME:
                 if depth < _BFS_MAX_DEPTH:
                     queue.append((file_id, prefix + name + "/", depth + 1))
+                else:
+                    print(
+                        f"warning: folder '{name}' at depth {depth} hit the"
+                        f" {_BFS_MAX_DEPTH}-level walk cap — its subtree may be truncated",
+                        file=sys.stderr,
+                    )
                 continue
             files.append(
                 syncing.DriveFile(
@@ -226,9 +233,7 @@ def list_drive_files(transport: DriveTransport) -> list[syncing.DriveFile]:
 def _chunks_for(
     transport: DriveTransport, candidate: syncing.IngestCandidate, output_dir: Path
 ) -> list[Chunk]:
-    """Produce one candidate file's chunks: download + decode text, or a title-only row."""
-    if not syncing.is_text_mime(candidate.file.mime_type):
-        return [Chunk(heading=None, body="")]  # non-text: index title/path only
+    """Download one selected TEXT file and chunk it (content-only fallbacks below)."""
     dest = transport.download(candidate.file.file_id, output_dir)
     raw = Path(dest).read_bytes()
     try:
@@ -280,7 +285,7 @@ def run_sync(
         ingested = 0
         with tempfile.TemporaryDirectory(prefix="sync-knowledge-") as tmp:
             output_dir = Path(tmp)
-            for candidate in (*plan.downloads, *plan.index_only):
+            for candidate in plan.downloads:
                 try:
                     chunks = _chunks_for(transport, candidate, output_dir)
                 except (SyncError, OSError) as exc:
@@ -297,7 +302,28 @@ def run_sync(
                     chunks=chunks,
                 )
                 ingested += 1
-        return SyncOutcome(plan=plan, ingested=ingested, failed=failed, resync=resync)
+            # index-only candidates were classified by the plan: no download, no
+            # second classification — one title/path-only row apiece.
+            for candidate in plan.index_only:
+                repo.replace_file(
+                    file_id=candidate.file.file_id,
+                    path=candidate.file.path,
+                    title=candidate.file.title,
+                    modified_time=candidate.canonical_time,
+                    fetched_at=fetched_at,
+                    chunks=[Chunk(heading=None, body="")],
+                )
+                ingested += 1
+        # the actual watermark, not the plan's projection: a failed download must
+        # not make the report overstate the cache
+        actual_watermark = repo.watermark()
+        return SyncOutcome(
+            plan=plan,
+            ingested=ingested,
+            failed=failed,
+            resync=resync,
+            actual_watermark=actual_watermark,
+        )
     finally:
         conn.close()
 
@@ -372,7 +398,7 @@ def _report(outcome: SyncOutcome) -> None:
     if not outcome.dry_run:
         print(
             f"ingested {outcome.ingested} file(s); failed {len(outcome.failed)};"
-            f" watermark {plan.projected_watermark or 'empty'}"
+            f" watermark {outcome.actual_watermark or 'empty'}"
         )
     for line in outcome.failed:
         print(f"  FAILED: {line}", file=sys.stderr)

@@ -96,8 +96,11 @@ def _tree() -> tuple[dict[str | None, list[dict[str, object]]], dict[str, bytes]
 
 def _rows(db_path: Path) -> list[tuple[object, ...]]:
     """Read the full knowledge cache (chunk_id, file_id, body) via a fresh connection."""
-    with sqlite3.connect(db_path) as conn:
+    conn = sqlite3.connect(db_path)
+    try:
         return list(conn.execute("SELECT chunk_id, file_id, body FROM knowledge"))
+    finally:
+        conn.close()
 
 
 @pytest.fixture()

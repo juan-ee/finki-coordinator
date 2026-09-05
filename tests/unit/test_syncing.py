@@ -210,15 +210,17 @@ def test_unparseable_modified_time_is_skipped_incrementally() -> None:
     assert "not-a-timestamp" in plan.skipped[0].reason
 
 
-def test_resync_ingests_unparseable_timestamps() -> None:
-    """A rebuild stores what Drive reports: the bad-timestamp file is ingested too
-    (the documented T2.14 fallback keeps bad metadata visible in the cache)."""
+def test_resync_also_skips_unparseable_timestamps() -> None:
+    """Even a rebuild skips an unparseable modifiedTime: storing its raw string would
+    make it the derived watermark (BINARY MAX above every real '2026-…' value) and
+    permanently break every later incremental round."""
     files = [_file("bad", "weird.md", "not-a-timestamp")]
 
     plan = plan_sync(files, None, resync=True)
 
-    assert [c.file.file_id for c in plan.downloads] == ["bad"]
-    assert plan.skipped == ()
+    assert plan.downloads == ()
+    assert [s.file.file_id for s in plan.skipped] == ["bad"]
+    assert "not-a-timestamp" in plan.skipped[0].reason
 
 
 def test_unparseable_stored_watermark_falls_back_to_full_selection() -> None:
