@@ -431,6 +431,8 @@ Pi/human; the agent only produces/refreshes the verification script.
   a second run with no Drive-side changes ingests 0 files. Tests: fake CLI transport
   (Protocol), watermark edge cases, non-text files title/path-only, no network.
   Acceptance: `make check`; on the Pi, a real round + a no-op second round.
+  Notes: the freshness layering (read-through TTL gate, post-upload write-through,
+  Changes-API cursor) is deliberately OUT of this task — T2.23/T2.24.
 - [ ] **T2.19 Wire the schedule: `make sync` + hermes cron** — `make sync` target
   wrapping the script via `uv run`; documented nightly `hermes cron` job (proposal §8.1
   runbook line + docker/README note; conversational creation is the operator path).
@@ -439,8 +441,11 @@ Pi/human; the agent only produces/refreshes the verification script.
 - [ ] **T2.20 Remove the `knowledge_sync` tool (toolset 10 → 9)** — delete the
   TOOL_SPECS entry + `knowledge_sync` handler + its tests; rewrite
   `prompts/skills/knowledge/SKILL.md`'s sync section (cache refreshed by script/cron;
-  the agent only reads); update README architecture lines, `config.schema.json`'s
-  drive_root description, AGENTS.md tool counts. Acceptance: `make check`; the plugin
+  the agent only reads) **and make the post-upload write-through mandatory in its
+  upload section: after every successful `$GAPI drive upload`, run `make sync`**
+  (proposal §3 freshness model — write-through only works if every writer uses the
+  path); update README architecture lines, `config.schema.json`'s drive_root
+  description, AGENTS.md tool counts. Acceptance: `make check`; the plugin
   registers exactly 9 tools; no live doc references the two-call flow (changelogs/
   gate history excepted).
 - [ ] **T2.21 `DOC` — phase-2 gate refresh for v6.1** — update `docs/verify/phase2.md`
@@ -451,6 +456,23 @@ Pi/human; the agent only produces/refreshes the verification script.
   `config/config.yaml` (any deployment leaves the tree clean); fix the gate's stale
   SQLite-version note (in-container 3.53.4, not 3.50.4). Acceptance: fresh-clone
   `git status` clean after setup.
+- [ ] **T2.23 Read-through freshness gate on `knowledge_search` (proposal §3)** — TDD.
+  Before matching, the search path checks a last-freshness-check timestamp (injected
+  `Clock`); older than `knowledge.freshness_ttl_minutes` (config knob, default ~10,
+  schema + loader) → run the deterministic incremental sync (T2.18 engine) first, then
+  proceed. Debounce: searches inside the TTL never re-check. Degraded mode: Drive
+  unreachable → serve the cache and say so in the result summary (reading never
+  hard-fails). Tests: TTL edge cases (clock injected), debounce, degraded mode,
+  freshness round-trip (edit → gate → findable — the proper freshness test, not a
+  single positive lookup). Acceptance: `make check`; on the Pi, a Drive-side edit
+  becomes findable within one search after the TTL elapses.
+- [ ] **T2.24 `OPTIONAL` — Drive Changes API cursor (proposal §3)** — replace the
+  `modifiedTime` watermark with `changes.list`'s `pageToken` cursor (incremental
+  change feed; `includeRemoved`) so deletions/trashes/moves are detected — the one
+  thing a modifiedTime watermark structurally misses. Storage: a `sync_cursor` row in
+  `settings`. Only after T2.18/T2.23 are stable; revisit if a real deletion leaves
+  stale chunks that matter. Push webhooks (`changes.watch`) stay REJECTED: they need
+  a public HTTPS receiver (no inbound ports by design).
 
 ## Phase 3 — Persona
 

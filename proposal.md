@@ -338,6 +338,28 @@ Google Drive (the record — team-edited):     data/project/ (agent workspace, l
   version history is the conflict safety net — no bisync, no rclone, no host crontab,
   no recovery runbooks.
 
+**Freshness model (v6.1 — layered; cron is the baseline, gates bound the staleness):**
+1. **Scheduled baseline:** the nightly `hermes cron` sync bounds staleness at ~24h with
+   zero moving parts.
+2. **Read-through gate (search):** `knowledge_search` checks a last-freshness-check
+   timestamp (injected `Clock`); if older than `knowledge.freshness_ttl_minutes`
+   (config knob, default ~10), it runs the deterministic incremental sync first —
+   normally one Drive list call returning zero changes (~sub-second), then proceeds.
+   Repeated searches inside the TTL never re-check. **Degraded mode:** if Drive is
+   unreachable, the search serves the cache anyway and says so in the result summary —
+   a Drive outage must never take down reading.
+3. **Write-through (upload):** after every successful `$GAPI drive upload`, the agent
+   runs `make sync` (one shell call — deterministic ingestion; hard rule 11 intact).
+   Write-through only works when **every writer** uses the path, so the knowledge
+   skill's upload section makes the post-upload sync mandatory (T2.20).
+4. **Upgrade path — Drive Changes API cursor:** replace the `modifiedTime` watermark
+   with `changes.list`'s `pageToken` cursor (incremental change feed) to also detect
+   **deletions/trashes/moves** — the one thing a modifiedTime watermark structurally
+   misses. Still polling: Drive **push webhooks** (`changes.watch`) need a public HTTPS
+   receiver — rejected (the Pi has no inbound ports by design; a tunnel is infra we
+   won't run). Note: the change feed can lag a few seconds after a write (propagation),
+   which the TTL gate absorbs.
+
 **Editorial policy (unchanged in spirit):** the agent files drafts into `inbox/`; the
 weekly triage moves them into the Drive `docs/**` (via `$GAPI upload`) and posts a
 *"what I filed"* summary to the group — humans keep editorial control with near-zero
@@ -429,9 +451,12 @@ ports (the gateway long-polls Telegram). Expect a slow one-time image build on t
    by design. Accepted residuals: a Drive-side deletion leaves stale cache chunks until
    the next full resync (the cache is rebuildable; searches still confirm against the
    live file), and $GAPI rate limits bound sync/upload volume (fine for a team of 4 and
-   dozens of text docs). **v6.1 residual:** the cron-synced cache lags Drive-side
-   changes by up to the sync interval — correctness is carried by the live-read
-   confirmation rule (READ), not by cache freshness.
+   dozens of text docs). **v6.1 residual (amended by the freshness model, §3):** the
+   cron-synced cache can lag Drive-side changes by up to the sync interval, but the
+   read-through TTL gate bounds findability lag to ~the TTL for anything the agent
+   reads, and the post-upload write-through makes agent-authored docs immediately
+   findable; correctness is carried by the live-read confirmation rule (READ), not by
+   cache freshness.
 
 ## 7. Resolved decisions (formerly open items)
 
