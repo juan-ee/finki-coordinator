@@ -18,7 +18,7 @@
         "drive_root": {
           "type": "string",
           "minLength": 1,
-          "description": "Folder inside the Shared Drive that holds the team documents."
+          "description": "Knowledge Drive root for the deterministic sync (v6.1: the bot account's own My Drive root)."
         },
         "timezone": {
           "type": "string",

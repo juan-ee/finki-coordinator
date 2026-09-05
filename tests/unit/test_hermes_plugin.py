@@ -35,7 +35,6 @@ TOOL_NAMES = frozenset(
         "checkins_by_date",
         "setting_get",
         "setting_set",
-        "knowledge_sync",
         "knowledge_search",
     }
 )
@@ -66,7 +65,6 @@ EXPECTED_FIELDS: dict[str, tuple[dict[str, str], list[str]]] = {
     ),
     "member_list": ({"active": "integer"}, []),
     "member_delete": ({"member_id": "integer"}, ["member_id"]),
-    "knowledge_sync": ({"files": "array"}, []),
     "knowledge_search": ({"limit": "integer", "query": "string"}, ["query"]),
     "checkin_submit": (
         {
@@ -237,7 +235,7 @@ def _wire() -> tuple[MembersRepository, CheckinsRepository, SettingsRepository, 
 # --- register_tools -------------------------------------------------------------------
 
 
-def test_register_tools_records_exactly_ten_registrations() -> None:
+def test_register_tools_records_exactly_nine_registrations() -> None:
     """register_tools() calls ctx.register_tool once per TOOL_SPECS entry, all coordinator."""
     ctx = FakeCtx()
     members, checkins, settings, clock = _wire()
@@ -247,7 +245,7 @@ def test_register_tools_records_exactly_ten_registrations() -> None:
     )
 
     names = [call["name"] for call in ctx.calls]
-    assert len(ctx.calls) == 10
+    assert len(ctx.calls) == 9
     assert set(names) == TOOL_NAMES
     assert len(set(names)) == len(names)  # exactly one registration per tool
     assert all(call["toolset"] == "coordinator" for call in ctx.calls)
@@ -259,7 +257,7 @@ def test_register_tools_records_exactly_ten_registrations() -> None:
 
 
 def test_every_schema_is_well_formed() -> None:
-    """All ten schemas: type object, dict properties, list required, required inside properties."""
+    """All nine schemas: type object, dict properties, list required, required inside properties."""
     for name, spec in TOOL_SPECS.items():
         schema = spec["schema"]
         assert schema["type"] == "object", name
@@ -269,8 +267,12 @@ def test_every_schema_is_well_formed() -> None:
         assert schema["additionalProperties"] is False, name
 
 
-def test_tool_specs_cover_exactly_the_ten_tools() -> None:
-    """TOOL_SPECS has exactly the ten tool names, each wired to its handlers.py function."""
+def test_tool_specs_cover_exactly_the_nine_tools() -> None:
+    """TOOL_SPECS has exactly the nine tool names, each wired to its handlers.py function.
+
+    The two-call knowledge_sync tool was removed in v6.1 (T2.20): sync is the
+    deterministic script (scripts/sync_knowledge.py), file content never crosses
+    LLM context (AGENTS.md hard rule 11)."""
     assert set(TOOL_SPECS) == TOOL_NAMES
     for name, handler in (
         ("member_add", handlers.member_add),
@@ -281,7 +283,6 @@ def test_tool_specs_cover_exactly_the_ten_tools() -> None:
         ("setting_get", handlers.setting_get),
         ("setting_set", handlers.setting_set),
         ("member_delete", handlers.member_delete),
-        ("knowledge_sync", handlers.knowledge_sync),
         ("knowledge_search", handlers.knowledge_search),
     ):
         assert TOOL_SPECS[name]["handler"] is handler, name
@@ -290,35 +291,17 @@ def test_tool_specs_cover_exactly_the_ten_tools() -> None:
 def test_schemas_mirror_handler_payload_fields_exactly() -> None:
     """Schema properties/required mirror each handler's accepted payload fields.
 
-    This pins property names, their JSON types, and the required list, plus the
-    nested files item shape for knowledge_sync — the field-level contract only. It
-    does NOT prove full handler/schema equality: null-as-absent leniency and
-    non-empty-string strictness are handler contract details that properties and
-    required lists cannot express (see the knowledge_sync docstring).
+    This pins property names, their JSON types, and the required list — the
+    field-level contract only. It does NOT prove full handler/schema equality:
+    null-as-absent leniency and non-empty-string strictness are handler contract
+    details that properties and required lists cannot express.
     """
     for tool, (fields, required) in EXPECTED_FIELDS.items():
         schema = TOOL_SPECS[tool]["schema"]
         properties = schema["properties"]
         assert isinstance(properties, dict), tool
         assert sorted(properties) == sorted(fields), tool
-        if tool == "knowledge_sync":
-            assert properties["files"] == {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "file_id": {"type": "string"},
-                        "path": {"type": "string"},
-                        "title": {"type": "string"},
-                        "modified_time": {"type": "string"},
-                        "content": {"type": "string"},
-                    },
-                    "required": ["file_id", "path", "title", "modified_time"],
-                    "additionalProperties": False,
-                },
-            }, tool
-        else:
-            assert properties == {key: {"type": value} for key, value in fields.items()}, tool
+        assert properties == {key: {"type": value} for key, value in fields.items()}, tool
         assert sorted(schema["required"]) == sorted(required), tool
 
 
@@ -359,7 +342,7 @@ def test_registered_schemas_carry_the_model_facing_description() -> None:
         ctx, members=members, checkins=checkins, settings=settings, clock=clock, knowledge=None
     )
 
-    assert len(ctx.calls) == 10
+    assert len(ctx.calls) == 9
     for call in ctx.calls:
         schema = call["schema"]
         assert isinstance(schema, dict), call["name"]
@@ -425,8 +408,8 @@ def test_dispatch_unknown_tool_raises_keyerror() -> None:
         )
 
 
-def test_dispatch_knowledge_sync_without_wired_knowledge_repo_raises_keyerror() -> None:
-    """Dispatching knowledge_sync with knowledge=None raises the wiring-bug KeyError.
+def test_dispatch_knowledge_search_without_wired_knowledge_repo_raises_keyerror() -> None:
+    """Dispatching knowledge_search with knowledge=None raises the wiring-bug KeyError.
 
     A knowledge tool whose repository was never wired (knowledge=None is legal for
     the eight repo-free tools) is a wiring bug, not a payload error: the guard
@@ -435,11 +418,11 @@ def test_dispatch_knowledge_sync_without_wired_knowledge_repo_raises_keyerror() 
     members, checkins, settings, clock = _wire()
 
     with pytest.raises(
-        KeyError, match="tool 'knowledge_sync' requires a wired knowledge repository"
+        KeyError, match="tool 'knowledge_search' requires a wired knowledge repository"
     ):
         dispatch(
-            "knowledge_sync",
-            {},
+            "knowledge_search",
+            {"query": "x"},
             members=members,
             checkins=checkins,
             settings=settings,
@@ -529,4 +512,4 @@ def test_module_imports_with_hermes_absent() -> None:
 
     assert module is hermes_plugin
     assert "hermes" not in sys.modules  # the adapter pulled in no Hermes at import time
-    assert len(TOOL_SPECS) == 10
+    assert len(TOOL_SPECS) == 9

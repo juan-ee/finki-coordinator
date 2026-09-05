@@ -288,6 +288,28 @@ def test_empty_text_file_gets_title_path_only_row(db_path: Path, repo: Knowledge
     assert [h.file_id for h in repo.search("Empty", limit=5)] == ["f-empty"]
 
 
+def test_whitespace_only_text_file_stores_title_path_only_row(
+    db_path: Path, repo: KnowledgeRepo
+) -> None:
+    """B5 residual (T2.17 adoption, migrated from the removed handler's tests):
+    whitespace-only text must store the title/path-only row, not vanish."""
+    tree, contents = _tree()
+    tree[None].append(_entry("f-ws", "Whitespace doc.md", "text/markdown", "2026-09-05T00:00:00Z"))
+    contents = dict(contents)
+    contents["f-ws"] = b" \n \t "
+
+    outcome = sync_script.run_sync(
+        db_path, FakeDrive(tree, contents), fetched_at="2026-09-06T00:00:00+00:00"
+    )
+
+    assert outcome.ingested == 5
+    assert outcome.failed == []
+    hits = repo.search("Whitespace", limit=5)
+    assert len(hits) == 1 and hits[0].file_id == "f-ws"
+    rows = [row for row in _rows(db_path) if row[1] == "f-ws"]
+    assert len(rows) == 1 and rows[0][2] == ""
+
+
 def test_duplicate_file_id_across_folders_ingests_once(db_path: Path, repo: KnowledgeRepo) -> None:
     """A file reachable twice (Drive shortcut edge) ingests once — first BFS path wins."""
     tree, contents = _tree()

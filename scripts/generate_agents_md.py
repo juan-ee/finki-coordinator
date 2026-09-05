@@ -55,8 +55,9 @@ The team's shared documents live on **Google Drive** (`docs/product/brief.md`,
 `docs/decisions/`, `docs/meetings/`, `docs/howto/`, `assets/`) — Drive is the record.
 `data/project/` is the bot's local workspace: the gateway runs with it as working
 directory, so this file is injected into sessions automatically. Drive documents are
-cached locally by `knowledge_sync` and searched with `knowledge_search`; the cache is
-rebuildable from Drive at any time.
+cached locally by the deterministic sync script (`scripts/sync_knowledge.py` —
+refreshed by `make sync` and the nightly cron job) and searched with
+`knowledge_search`; the cache is rebuildable from Drive at any time.
 
 ```text
 Google Drive (the record — team-edited):

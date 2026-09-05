@@ -34,7 +34,6 @@ from .handlers import (
     checkin_submit,
     checkins_by_date,
     knowledge_search,
-    knowledge_sync,
     member_add,
     member_delete,
     member_list,
@@ -237,42 +236,6 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
         "handler": setting_set,
         "toolset": "coordinator",
         "takes_knowledge": False,
-    },
-    "knowledge_sync": {
-        "description": (
-            "Sync the knowledge cache with Drive (two-call, agent-mediated $GAPI)."
-            " Call with NO arguments first: the result carries the watermark plus the"
-            " $GAPI work order — list the Drive root, pick files with modifiedTime"
-            " past the watermark, download those, then call again passing files=[{"
-            "file_id, path, title, modified_time, content}] (omit content for"
-            " non-text files: they are indexed title/path only). The result of the"
-            " second call reports how many files were synced and the new watermark."
-        ),
-        "schema": {
-            "type": "object",
-            "properties": {
-                "files": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "file_id": {"type": "string"},
-                            "path": {"type": "string"},
-                            "title": {"type": "string"},
-                            "modified_time": {"type": "string"},
-                            "content": {"type": "string"},
-                        },
-                        "required": ["file_id", "path", "title", "modified_time"],
-                        "additionalProperties": False,
-                    },
-                },
-            },
-            "required": [],
-            "additionalProperties": False,
-        },
-        "handler": knowledge_sync,
-        "toolset": "coordinator",
-        "takes_knowledge": True,
     },
     "knowledge_search": {
         "description": (

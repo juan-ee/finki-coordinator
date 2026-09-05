@@ -13,10 +13,9 @@ local SQLite FTS5 index, and an OpenExecutive-derived operator persona.
 
 ## What you get
 
-- **10 coordinator tools** in every bot session: `member_add`, `member_update`,
+- **9 coordinator tools** in every bot session: `member_add`, `member_update`,
   `member_list`, `member_delete` (owner-only), `checkin_submit`, `checkins_by_date`,
-  `setting_get`, `setting_set`, `knowledge_sync` (Drive cache sync),
-  `knowledge_search` (FTS5 over the cache).
+  `setting_get`, `setting_set`, `knowledge_search` (FTS5 over the cache).
 - **Timezone-safe scheduling** — each member's local wake time becomes a UTC cron entry
   (08:00 in Quito → `0 13 * * *`), computed in pure Python (`src/coordinator/scheduling.py`),
   never by the LLM. DST is resolved at schedule-computation time from an explicit instant.
@@ -31,10 +30,12 @@ local SQLite FTS5 index, and an OpenExecutive-derived operator persona.
   tasks → the `kanban_*` tools.
 - **Check-in & digest skills**, an operator persona (`prompts/persona.md` → `SOUL.md`),
   and a kanban board driven through Hermes' built-in tools.
-- **Google Shared Drive knowledge base (v6)** — the agent is the team's librarian:
-  `knowledge_sync` incrementally caches Drive documents into a local FTS5 index,
-  `knowledge_search` finds the right document, and agent-authored journals are
-  uploaded back via `$GAPI drive upload`. No rclone, no mirror, no host crontab.
+- **Google Shared Drive knowledge base (v6.1)** — the agent is the team's librarian:
+  a deterministic sync script (`scripts/sync_knowledge.py` — `make sync` + a nightly
+  `hermes cron` job, no LLM in the data path) incrementally caches Drive documents
+  into a local FTS5 index, `knowledge_search` finds the right document, and
+  agent-authored journals are uploaded back via `$GAPI drive upload`. No rclone, no
+  mirror, no host crontab.
 
 ## How it fits together
 
@@ -44,7 +45,7 @@ Telegram ⇄ hermes-agent gateway (Docker, network_mode: host — long-poll, no 
               ├─ coordinator plugin (this repo, src/coordinator — mounted read-only)
               │     └─ SQLite: data/hermes/hermes-coord.db (members / checkins / settings)
               ├─ cron: UTC-anchored jobs, cron.model pinned (jobs inherit)
-              └─ Google Drive ⇄ $GAPI (knowledge_sync / knowledge_search / upload)
+              └─ Google Drive ⇄ $GAPI (sync script / knowledge_search / upload)
                     local FTS5 cache: hermes-coord.db · data/project/ = agent workspace
 ```
 

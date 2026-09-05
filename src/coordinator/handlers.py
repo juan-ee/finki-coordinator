@@ -18,7 +18,6 @@ from typing import Protocol, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import scheduling
-from .knowledge import Chunk, chunk_markdown
 from .repositories import (
     DEFAULTS,
     CheckinsRepository,
@@ -27,7 +26,6 @@ from .repositories import (
     MembersRepository,
     SettingsRepository,
 )
-from .syncing import canonical_modified_time
 
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _DIGITS_RE = re.compile(r"[0-9]+")  # ASCII only: Unicode Nd digits must not pass
@@ -53,13 +51,7 @@ _SUBMIT_FIELDS = frozenset({"member_id", "date", "done", "next", "blockers", "so
 _DATE_FIELDS = frozenset({"date"})
 _KEY_FIELDS = frozenset({"key"})
 _SET_FIELDS = frozenset({"key", "value"})
-_SYNC_FIELDS = frozenset({"files"})
 _SEARCH_FIELDS = frozenset({"query", "limit"})
-
-# One knowledge_sync ingest entry: four required strings + optional text content
-# (absent/None = non-text file, "" = empty text file: one title/path-only row either
-# way, audit second-pass rule; only non-empty text content is chunked).
-_FILE_REQUIRED_FIELDS = ("file_id", "path", "title", "modified_time")
 
 
 class Clock(Protocol):
@@ -594,107 +586,6 @@ def _setting_value_error(key: str, value: str) -> str | None:
             )
         return None
     return None
-
-
-def knowledge_sync(
-    payload: dict[str, object],
-    members: MembersRepository,
-    checkins: CheckinsRepository,
-    settings: SettingsRepository,
-    clock: Clock,
-    knowledge: KnowledgeRepository,
-) -> dict[str, object]:
-    """Sync the knowledge cache with Drive (two-call, agent-mediated $GAPI; D2).
-
-    Call 1 - empty payload (plan): returns the derived watermark plus the $GAPI work
-    order; the agent lists the Drive root, selects files with modifiedTime past the
-    watermark, downloads those, and calls again with them. Call 2 - {files: [...]
-    } (ingest): validates the WHOLE batch, then chunks + stores each file through
-    the repo (absent content = non-text file, or empty text content: one
-    title/path-only row either way; only non-empty text content is chunked). Each
-    modified_time is normalized at ingest to canonical UTC
-    'YYYY-MM-DDTHH:MM:SSZ' (a trailing Z is read as +00:00; an unparseable value
-    is stored unchanged), so the watermark - MAX over the stored rows - ranks
-    chronologically, never lexicographically across mixed offset forms; no partial
-    ingest on a malformed batch.
-
-    The handler is deliberately more lenient than the model-facing schema (the
-    handlers-wide null-is-absent convention): a JSON null for files counts as
-    absent — a plan call, like the empty payload — and content: null counts as
-    absent (non-text). Same-batch duplicate file_ids are last-wins: only the last
-    entry's rows stay stored for that file_id, while the result reports
-    synced=len(entries) (entries, not unique files).
-    """
-    del members, checkins, settings  # uniform handler signature; the cache is external
-    error = _reject_unknown(payload, _SYNC_FIELDS)
-    if error is not None:
-        return _fail(error)
-    files = payload.get("files")
-    if files is None:
-        watermark = knowledge.watermark()
-        hint = (
-            "Use the google-workspace skill ($GAPI) to list the Drive root and download"
-            " the text files whose modifiedTime is past the watermark"
-            + (f" ({watermark})" if watermark is not None else " (empty cache: all files)")
-            + "; then call knowledge_sync again passing files=[{file_id, path, title,"
-            " modified_time, content}] (omit content for non-text files)."
-        )
-        data: dict[str, object] = {"watermark": watermark, "files_hint": hint}
-        summary = f"knowledge sync plan ready (watermark: {watermark or 'empty cache'})"
-        return _result(True, summary, None, data)
-    if not isinstance(files, list):
-        return _fail(
-            "field 'files' must be a list of {file_id, path, title, modified_time, content} entries"
-        )
-
-    # Validate-then-apply: one malformed entry fails the whole batch (no partial ingest).
-    validated: list[tuple[str, str, str, str, str | None]] = []
-    for index, entry in enumerate(files):
-        prefix = f"files[{index}]: "
-        if not isinstance(entry, dict):
-            return _fail(prefix + "each entry must be an object")
-        unknown = sorted(set(entry) - {"file_id", "path", "title", "modified_time", "content"})
-        if unknown:
-            return _fail(prefix + f"unexpected field {unknown[0]!r}")
-        for field in _FILE_REQUIRED_FIELDS:
-            value = entry.get(field)
-            if not isinstance(value, str) or value == "":
-                return _fail(prefix + f"{field!r} is required and must be a non-empty string")
-        content = entry.get("content")
-        if content is not None and not isinstance(content, str):
-            return _fail(prefix + "field 'content' must be a string when present")
-        validated.append(
-            (
-                cast("str", entry["file_id"]),
-                cast("str", entry["path"]),
-                cast("str", entry["title"]),
-                cast("str", entry["modified_time"]),
-                content,
-            )
-        )
-
-    fetched_at = clock.now().isoformat()
-    for file_id, path, title, modified_time, content in validated:
-        # absent / empty / whitespace-only content all store the title/path-only row
-        # (B5 + red-team residual: every ingested FILE leaves a trace and advances
-        # the watermark; only non-blank text is chunked).
-        chunks = (
-            chunk_markdown(content)
-            if content and content.strip()
-            else [Chunk(heading=None, body="")]
-        )
-        knowledge.replace_file(
-            file_id=file_id,
-            path=path,
-            title=title,
-            modified_time=canonical_modified_time(modified_time),
-            fetched_at=fetched_at,
-            chunks=chunks,
-        )
-    watermark = knowledge.watermark()
-    data = {"synced": len(validated), "watermark": watermark}
-    summary = f"{len(validated)} file(s) synced into the knowledge cache"
-    return _result(True, summary, None, data)
 
 
 def knowledge_search(

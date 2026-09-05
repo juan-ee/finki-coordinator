@@ -19,4 +19,3 @@ provides_tools:
   - setting_get
   - setting_set
   - knowledge_search
-  - knowledge_sync

@@ -1,7 +1,8 @@
 # Skill: knowledge base (Drive is the record, the cache is the index)
 
-Use when a question needs team documents, when the knowledge cache needs a sync, or
-after writing a document that belongs on Drive.
+Use when a question needs team documents, or after writing a document that belongs
+on Drive. You NEVER sync the cache yourself and never pass file content through
+tools — the cache is refreshed by a deterministic script (hard rule 11).
 
 ## Reading: search, then confirm
 
@@ -12,24 +13,30 @@ after writing a document that belongs on Drive.
    finding aid; Drive is current truth. If the search finds nothing, say so and offer
    a live $GAPI drive search before concluding the document does not exist.
 
-## Syncing the cache (knowledge_sync)
+## The cache is refreshed by the script — not by you
 
-1. Call `knowledge_sync` with NO arguments (plan): it returns the watermark and the
-   $GAPI work order.
-2. List the Drive root via $GAPI; select files whose modifiedTime is past the
-   watermark; download those as text.
-3. Call `knowledge_sync` again passing files=[{file_id, path, title, modified_time,
-   content}] — omit content for non-text files (PDFs, binaries, Google-native exports):
-   they are indexed title/path only, and their content is extracted on live read.
-4. The result reports how many files were synced and the new watermark. Re-run the
-   whole round after any Drive-side deletion (deleted files leave stale cache chunks
-   until a full resync — deleting the cache forces one; it is rebuildable by design).
+The cache (`knowledge_search`'s index) is maintained by
+`scripts/sync_knowledge.py`: it lists the knowledge Drive, diffs against the
+watermark, downloads changed text files, and ingests them through the plugin's own
+chunker/repository. It runs on a nightly `hermes cron` job and on demand via
+`make sync` — **you have no sync tool and must never shuttle file content through
+your context** (AGENTS.md hard rule 11). Non-text files (PDFs, binaries,
+Google-native exports) are indexed title/path only; extract their content on a live
+read via $GAPI. After a Drive-side deletion, chunks stay cached until the next
+`--resync` (the cache is rebuildable by design) — live reads keep you honest.
 
-## Writing: upload after write
+## Writing: upload, then sync (mandatory write-through)
 
 - Journals and digests: write locally under `journal/`, then upload the file to the
   matching Drive folder via $GAPI drive upload. If the upload fails, say so in one
   line at the end of the journal entry — drift must be visible, not silent.
+- **After EVERY successful upload, make the new document findable: run the sync
+  one-shot via your shell tool — `python3 /opt/data/scripts/sync_knowledge.py`**
+  (the in-container equivalent of the host's `make sync`), then report the counts
+  line. The write-through only works if every writer runs it — skipping it leaves
+  your own upload unsearchable until the nightly job. If the sync fails, say so in
+  one line — drift must be visible, not silent. The script prints counts, paths and
+  the watermark only; never fetch file content into your context.
 - Drafts: file into `inbox/`; weekly triage uploads them into the Drive `docs/**` and
   announces what was filed.
 - Never edit Drive documents in place without reading their live version first —

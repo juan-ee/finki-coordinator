@@ -6,13 +6,15 @@ protocol step 4, run at HEAD ddfbe54 ahead of the T2.17 manual gate; battery:
 bug the red team broke open - fixed in the same change as this module - and pins
 the FIXED behavior as a regression test; the red team's attack names keep a
 redteam_ prefix. Bug map: B1 replace_file rolls back on ANY failure, not only
-sqlite3.Error (tests 1-3); B2 knowledge_search rejects NUL/C0 control-character
-queries up front (test 4); B3 a fence closes only on the same character and an
-at-least-as-long run (tests 5-6); B4 only CRLF/CR/LF are markdown line endings
-(tests 7-11); B5 an empty text file stores a searchable title/path-only row and
-advances the watermark (test 12); B6 ingested modified_time values are
-canonicalized to UTC so the watermark is chronological (test 13). Deterministic:
-tmp_path, fixed clock, no network.
+sqlite3.Error (tests 1-2, incl. no-poisoning-of-later-writes); B2 knowledge_search
+rejects NUL/C0 control-character queries up front (test 3); B3 a fence closes only
+on the same character and an at-least-as-long run (tests 4-5); B4 only CRLF/CR/LF
+are markdown line endings (tests 6-10). The former B5 (empty text file leaves a
+trace), B6 (chronological watermark) and undecodable-content tests pinned the
+v6 agent-mediated knowledge_sync handler; that handler was removed in v6.1 (T2.20)
+and their invariants now live in the deterministic sync's tests
+(tests/unit/test_syncing.py + tests/unit/test_sync_knowledge_script.py).
+Deterministic: tmp_path, fixed clock, no network.
 """
 
 import sqlite3
@@ -23,7 +25,7 @@ from pathlib import Path
 import pytest
 
 from coordinator.db import connect, migrate
-from coordinator.handlers import knowledge_search, knowledge_sync
+from coordinator.handlers import knowledge_search
 from coordinator.knowledge import Chunk, chunk_markdown
 from coordinator.repositories import KnowledgeRepo
 
@@ -117,39 +119,6 @@ def test_redteam_failed_reindex_survives_later_unrelated_sync(conn: sqlite3.Conn
     )
 
 
-def test_redteam_knowledge_sync_undecodable_content_fails_cleanly(
-    conn: sqlite3.Connection, knowledge: KnowledgeRepo
-) -> None:
-    """A batch entry with undecodable content (a lone surrogate) must leave the cache
-    consistent. Adjusted from the red team's ok:False expectation: content encoding
-    is not payload validation, so the bind failure still propagates out of the
-    handler - but B1's rollback means no open transaction and no rows for the
-    failing file; the earlier valid entry stays stored (per-file reindex commits)."""
-    files = [
-        {
-            "file_id": "good",
-            "path": "docs/g.md",
-            "title": "Good",
-            "modified_time": "2026-09-01T00:00:00Z",
-            "content": "## Good\ngoodword",
-        },
-        {
-            "file_id": "bad",
-            "path": "docs/b.md",
-            "title": "Bad",
-            "modified_time": "2026-09-02T00:00:00Z",
-            "content": "payload \ud800 content",
-        },
-    ]
-    with pytest.raises(UnicodeEncodeError):
-        knowledge_sync({"files": files}, None, None, None, FakeClock(), knowledge)
-    assert conn.in_transaction is False, "aborted store left an open write transaction"
-    rows = conn.execute("SELECT file_id FROM knowledge ORDER BY file_id").fetchall()
-    assert [str(row["file_id"]) for row in rows] == ["good"], (
-        "the failing entry must leave no rows; the earlier valid entry stays stored"
-    )
-
-
 # --- B2: an embedded NUL must not silently truncate the MATCH query -----------------------
 
 
@@ -216,94 +185,3 @@ def test_redteam_unicode_separators_are_not_markdown_line_endings(sep: str) -> N
     assert len(chunks) == 1
     assert chunks[0].heading is None
     assert "## Fake" in chunks[0].body
-
-
-# --- B5: an empty text file must leave a cache trace ---------------------------------------
-
-
-def test_redteam_empty_text_file_keeps_searchable_title_and_advances_watermark(
-    knowledge: KnowledgeRepo,
-) -> None:
-    """content='' stores one title/path-only row (like a non-text file), so the title
-    stays searchable and the watermark advances past the file's modified_time."""
-    result = knowledge_sync(
-        {
-            "files": [
-                {
-                    "file_id": "empty1",
-                    "path": "docs/empty.md",
-                    "title": "Vacant Report",
-                    "modified_time": "2026-09-05T00:00:00Z",
-                    "content": "",
-                }
-            ]
-        },
-        None,
-        None,
-        None,
-        FakeClock(),
-        knowledge,
-    )
-    assert result["data"]["watermark"] == "2026-09-05T00:00:00Z"
-    assert [h.file_id for h in knowledge.search("vacant", 5)] == ["empty1"]
-
-
-# --- B6: the watermark must be chronological, not lexicographic ----------------------------
-
-
-def test_redteam_watermark_is_chronological_across_rfc3339_offset_forms(
-    conn: sqlite3.Connection, knowledge: KnowledgeRepo
-) -> None:
-    """Two valid RFC3339 forms: '2026-09-01T23:30:00Z' vs '2026-09-01T23:00:00-05:00'
-    (= 2026-09-02T04:00Z, chronologically LATER). Ingest canonicalizes each
-    modified_time to UTC 'YYYY-MM-DDTHH:MM:SSZ', so the watermark reports the
-    chronologically-latest ingested instant, not the lexicographically-largest string."""
-    files = [
-        {
-            "file_id": "a",
-            "path": "docs/a.md",
-            "title": "A",
-            "modified_time": "2026-09-01T23:30:00Z",
-            "content": "## A\naword",
-        },
-        {
-            "file_id": "b",
-            "path": "docs/b.md",
-            "title": "B",
-            "modified_time": "2026-09-01T23:00:00-05:00",
-            "content": "## B\nbword",
-        },
-    ]
-    result = knowledge_sync({"files": files}, None, None, None, FakeClock(), knowledge)
-    assert result["ok"] is True
-    stored = conn.execute("SELECT modified_time FROM knowledge WHERE file_id = 'b'").fetchone()
-    assert stored is not None
-    assert stored["modified_time"] == "2026-09-02T04:00:00Z"
-    assert result["data"]["watermark"] == "2026-09-02T04:00:00Z"
-
-
-def test_redteam_whitespace_only_content_stores_title_path_row(
-    conn: sqlite3.Connection, knowledge: KnowledgeRepo
-) -> None:
-    """B5 residual (T2.17 adoption review): whitespace-only text still leaves a trace.
-
-    Same shape as B5: a file whose content is only whitespace must store the
-    title/path-only row (searchable) and advance the watermark, not vanish.
-    """
-    files = [
-        {
-            "file_id": "ws",
-            "path": "docs/ws.md",
-            "title": "Whitespace doc",
-            "modified_time": "2026-09-05T00:00:00Z",
-            "content": " \n \t ",
-        }
-    ]
-    result = knowledge_sync({"files": files}, None, None, None, FakeClock(), knowledge)
-
-    assert result["ok"] is True
-    row = conn.execute("SELECT body, title FROM knowledge WHERE file_id = 'ws'").fetchone()
-    assert row is not None and row["body"] == "" and row["title"] == "Whitespace doc"
-    hits = knowledge.search("whitespace", limit=5)
-    assert len(hits) == 1 and hits[0].file_id == "ws"
-    assert result["data"]["watermark"] == "2026-09-05T00:00:00Z"
