@@ -7,6 +7,10 @@ backups/
 # Local roster seed with real Telegram IDs (README step 3, seed-file header) — never commit
 config/members.local.yaml
 
+# Real boot defaults (operator-owned; template ships config.example.yaml) — T2.22:
+# any deployment fills config/config.yaml, and the tree must stay clean for strangers
+config/config.yaml
+
 # Python & tool caches
 __pycache__/
 .venv/

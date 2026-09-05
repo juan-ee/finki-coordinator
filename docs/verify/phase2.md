@@ -180,9 +180,9 @@ docker compose exec gateway python3 -c "import sqlite3; c = sqlite3.connect('/op
 
       exits 0 (clean). **The rank form is required** — the plain
       `VALUES('integrity-check')` verifies only FTS-internal structure and does NOT
-      compare against the external content table (pinned on SQLite 3.50.4, T2.13).
-      **✓ 2026-09-05 (agent-run in-container):** exit 0, clean. Note: container SQLite
-      is 3.53.4 (the "3.50.4" pin note above is stale — rank form still required/valid).
+      compare against the external content table (verified on the suite's SQLite
+      3.50.4 and the container's 3.53.4, T2.13 + T2.22).
+      **✓ 2026-09-05 (agent-run in-container):** exit 0, clean.
 
 ## 5. UP path — upload after write (cache → Drive)
 
