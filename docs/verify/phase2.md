@@ -281,6 +281,14 @@ docker compose exec gateway python3 -c "import sqlite3; c = sqlite3.connect('/op
       first, and the summary says so → the agent finds the phrase and confirms
       against the live file. (`make sync` on the Pi host is the operator fallback,
       not the primary path — the v6.1 design makes the read path self-healing.)
+      **Phrase appended ("Nueva linea al final"); attempt 1 ✗ (2026-09-05, fresh
+      session):** the bot went FILESYSTEM-diving for the phrase (disk search + past
+      conversations) instead of calling `knowledge_search` — no tool call, no
+      freshness gate, no FTS. Consequence of the known gap: our repo skills are
+      not installed in the runtime, the curator-authored workflow skill was
+      removed, and the fresh session had no workflow guidance mapping a
+      knowledge-base ask to the tool (SOUL.md rule 6 alone didn't carry it).
+      Re-ask with the tool named explicitly to close the box.
 
 ## 6. Digest end-to-end
 
@@ -410,6 +418,15 @@ Deviations observed (if any):
   shadow `/tmp/ghome` removed, and `setup.py --check` → `AUTHENTICATED: Token
   refreshed at /opt/data/google_token.json` — the refresh-write that was failing
   now succeeds; the 03:30 UTC nightly sync cron is unblocked.
+  **ROOT CAUSE FOUND (same evening):** `docker compose exec` defaults to **root**
+  in this container (`exec id -un` → root) — every manual OAuth/`setup.py`/CLI
+  session via exec ran as root, and the token file has been root-owned since the
+  morning OAuth; uid-1000 reads (644) kept working, and root's 19:07:52Z refresh
+  had left a fresh access token, so earlier CLI calls didn't need a write — the
+  bot's 20:12Z upload was the first operation that did. Re-verified as the RUNTIME
+  user: `docker compose exec --user 1000 … setup.py --check` → `AUTHENTICATED:
+  Token valid`, ownership stays `juan-ee:juan-ee 600`. Operator confirmed they ran
+  nothing by hand. T2.26 gains the exec-user guard.
 - 2026-09-05 (step-5 run): (a) the Drive-side journal destination was never defined —
   no `journal/` folder exists in the knowledge base, so the skill's "matching Drive
   folder" is unresolvable and the bot guessed the root; (b) the mandatory
