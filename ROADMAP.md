@@ -386,7 +386,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   render; malformed MATCH queries (raw sqlite3.OperationalError from the repo search
   primitive — T2.13 review) must surface as ok:False actionable summaries.
 
-- [ ] **T2.16 `DOC` — persona/skills knowledge guidance + coherence pass** —
+- [x] **T2.16 `DOC` — persona/skills knowledge guidance + coherence pass** —
   `prompts/persona.md`: knowledge rules (search the index, then read the live Drive
   original before quoting; the cache is an index, Drive is the record; agent-authored
   files are uploaded after writing); new `prompts/skills/knowledge/SKILL.md` (when to
@@ -519,6 +519,20 @@ Pi/human; the agent only produces/refreshes the verification script.
 
 *(agents append here: date, task, deviation/observation)*
 
+- 2026-09-05 T2.16 — DOC task executed directly (commit 7312709); the checkbox stayed
+  unticked because the v6.1 mid-gate re-queue landed hours later and gated the remaining
+  phase-2 boxes on T2.18–T2.20 (which have since shipped). Close-out re-verified the
+  acceptance at HEAD 5601f57: persona hard rule 6 + self-review checklist;
+  prompts/skills/knowledge/SKILL.md (its sync section carries the v6.1 script flow via
+  T2.20); README quickstart (allow.sh door, null seed IDs, no rclone) + status table +
+  9-tool architecture lines; KICKOFF.md proposal rule; schema drive_root description
+  de-rclone'd; sweep clean — no live bisync/rclone/digest_time/status_days/search_files
+  references outside rejection tests, explanatory comments, and history docs; make check
+  green on the committed tree (378 tests). Residue recorded (owner call, not actioned):
+  README Requirements still offers "a Google account that can reach the team's Shared
+  Drive folder" while the gate's Drive-scoping deviation and the schema v6.1 description
+  put the knowledge base on the bot account's own My Drive; `project.drive_root` remains
+  parsed-but-unused (tracked in the gate deviations).
 - 2026-09-05 T2.22 — DOC/chore (no review protocol required). config/config.yaml
   gitignored; Pi acceptance: after pull, git status shows only the operator's own
   .env.bak-20260905-095236 backup artifact (operator file to remove, not a template
