@@ -197,7 +197,7 @@ that motivated the switch (proposal §11).
       CONSOLIDADO doc; the bot reported "cache refreshed just now, 0 failures" —
       the T2.23 freshness gate fired (stamp `13:55:35Z` → `19:19:11Z`,
       operator-verified in settings).
-- [ ] DM: *"What exactly does that document say?"* → the agent **reads the live Drive
+- [x] DM: *"What exactly does that document say?"* → the agent **reads the live Drive
       original via $GAPI** and quotes it (persona rule 6: the index is a finding aid).
       **✗ 2026-09-05 — FAIL as run:** the agent quoted from `~/.hermes/kb_sync/` and
       only *offered* to pull live originals afterwards — the designed order is
@@ -206,6 +206,20 @@ that motivated the switch (proposal §11).
       "a synced copy of the cache lives under `~/kb_sync/`"; the runtime SOUL.md is
       also stale (predates persona rule 6). Re-run the ask after the runtime hygiene
       fix closes the box.
+      **↻ RE-RUN 2026-09-05 (fresh DM session, after the fix bundle) — PASS:**
+      (1) asked for `notes/decisión.md` as a bare path, the bot searched its LOCAL
+      workspace, found nothing, and honestly reported the absence with a provenance
+      question — no stale quote (the kb_sync trap is gone);
+      (2) asked via the knowledge base, the bot called `knowledge_search`, then read
+      the LIVE Drive originals of BOTH docs via $GAPI and quoted them — content
+      matches the recorded test phrases exactly ("el quokka baila tangos los
+      martes" / "be happy everyday"), and the bot stated the real content comes from
+      the Drive originals. Freshness stamp moved 19:19:11Z → 19:43:55Z (TTL elapsed;
+      the read-gate refresh fired during the search, operator-verified in settings).
+      Friction noted: the fresh session re-derived the $GAPI invocation via terminal
+      probes (the removed curator skill had hardcoded it) — acceptable; T2.25 may
+      add a pointer. On-Pi debounce was not demonstrated live (every search this
+      session hit an elapsed TTL); the debounce remains covered by the T2.23 suite.
 - [x] DM: *"Search the knowledge base for ____________"* (the second doc's phrase) →
       found, correct document identified.
       **✓ 2026-09-05:** "be happy everyday" → 1 hit, `notes/decision.md`.
