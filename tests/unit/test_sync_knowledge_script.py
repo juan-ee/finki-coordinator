@@ -7,6 +7,7 @@ KnowledgeRepo on a tmp_path DB; no network, no Docker, no real secrets.
 """
 
 import importlib.util
+import os
 import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
@@ -362,3 +363,33 @@ def test_cli_runs_with_stdin_detached(monkeypatch, tmp_path: Path) -> None:
     transport.list_children(None)
 
     assert captured["stdin"] == sync_script.subprocess.DEVNULL
+
+
+def test_container_download_path_maps_data_under_host_to_the_mount() -> None:
+    """A host download path under <repo>/data maps to /opt/data/workspace/...."""
+    compose_dir = Path("/repo")
+
+    mapped = sync_script.container_download_path(
+        compose_dir, Path("/repo/data/sync-knowledge-abc/f-id")
+    )
+
+    assert mapped == Path("/opt/data/workspace/sync-knowledge-abc/f-id")
+
+
+def test_container_download_path_resolves_symlinked_data_dirs(tmp_path: Path) -> None:
+    """resolve() on both sides: a symlinked data dir still maps onto the mount."""
+    real_data = tmp_path / "data"
+    real_data.mkdir()
+    linked = tmp_path / "data-link"
+    os.symlink(real_data, linked)
+    compose_dir = linked.parent  # compose_dir/data must be the REAL dir after resolve
+
+    mapped = sync_script.container_download_path(compose_dir, linked / "tmp-xyz" / "f-id")
+
+    assert mapped == Path("/opt/data/workspace/tmp-xyz/f-id")
+
+
+def test_container_download_path_rejects_paths_outside_the_data_dir() -> None:
+    """A download path the mount cannot deliver is a loud programming error."""
+    with pytest.raises(sync_script.SyncError):
+        sync_script.container_download_path(Path("/repo"), Path("/etc/nowhere/f-id"))
