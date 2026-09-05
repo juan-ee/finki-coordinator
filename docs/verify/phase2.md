@@ -405,6 +405,11 @@ Deviations observed (if any):
   already solves it for its subprocess). (c) the bot offered to SAVE the workaround
   as a curated skill — declined (the curator-authored-skill drift class removed
   earlier today); the fix belongs in the template, not in runtime folklore.
+  **↻ Immediate fix APPLIED 2026-09-05 (owner-approved, agent-run over SSH):**
+  `sudo chown 1000:1000` + `chmod 600` on the token (now `juan-ee:juan-ee 600`),
+  shadow `/tmp/ghome` removed, and `setup.py --check` → `AUTHENTICATED: Token
+  refreshed at /opt/data/google_token.json` — the refresh-write that was failing
+  now succeeds; the 03:30 UTC nightly sync cron is unblocked.
 - 2026-09-05 (step-5 run): (a) the Drive-side journal destination was never defined —
   no `journal/` folder exists in the knowledge base, so the skill's "matching Drive
   folder" is unresolvable and the bot guessed the root; (b) the mandatory
