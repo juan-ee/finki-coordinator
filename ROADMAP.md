@@ -476,6 +476,17 @@ Pi/human; the agent only produces/refreshes the verification script.
   `settings`. Only after T2.18/T2.23 are stable; revisit if a real deletion leaves
   stale chunks that matter. Push webhooks (`changes.watch`) stay REJECTED: they need
   a public HTTPS receiver (no inbound ports by design).
+- [ ] **T2.25 `DOC` — prompt hardening from the phase-2 gate drift findings** —
+  knowledge SKILL.md: add the auto-refresh-on-search line (T2.23 read gate, the
+  runtime behavior the gate observed), an explicit "never read local kb_sync-style
+  copies — they are not a designed artifact; read the LIVE Drive original", and
+  "ids are internal — render paths/titles, never raw file_ids". Surface the template
+  decision on installing `prompts/skills/*` into the runtime skill store (nothing
+  installs them today; Hermes' skill curator filled the gap with an agent-authored
+  skill that misdirected the bot — see phase2.md deviations 2026-09-05) — owner call
+  on the mechanism (setup.sh install vs curated). Salvage verification note from the
+  removed runtime skill: does `cronjob action: update` really require `job_id`
+  (our relays emit `action: edit` + `name`; name-based edit verified at this pin).
 
 ## Phase 3 — Persona
 
