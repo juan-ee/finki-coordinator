@@ -82,6 +82,39 @@ def test_chunker_duplicate_headings_get_occurrence_suffixes() -> None:
     assert [c.heading for c in chunks] == ["Notes", "Notes (2)", "Notes (3)"]
 
 
+def test_chunker_fenced_heading_lines_do_not_split() -> None:
+    """A '## ' line inside a code fence is body text, never a section heading."""
+    body = "## Real\nintro\n```\n## fake heading inside fence\n```\ntail"
+
+    chunks = chunk_markdown(body)
+
+    assert len(chunks) == 1
+    assert chunks[0].heading == "Real"
+    assert chunks[0].body == "intro\n```\n## fake heading inside fence\n```\ntail"
+
+
+def test_chunker_unclosed_fence_suppresses_splits_to_eof() -> None:
+    """An unterminated fence keeps suppressing '## ' splits until the document ends."""
+    body = "## Real\nintro\n```\n## still inside\nno close"
+
+    chunks = chunk_markdown(body)
+
+    assert len(chunks) == 1
+    assert chunks[0].heading == "Real"
+    assert chunks[0].body == "intro\n```\n## still inside\nno close"
+
+
+def test_chunker_splits_again_after_a_closed_tilde_fence() -> None:
+    """~~~ fences (info string allowed) toggle too; past the close, headings split."""
+    body = "## Real\n~~~ruby\n## fake\n~~~\n## After\nafter body"
+
+    chunks = chunk_markdown(body)
+
+    assert [c.heading for c in chunks] == ["Real", "After"]
+    assert chunks[0].body == "~~~ruby\n## fake\n~~~"
+    assert chunks[1].body == "after body"
+
+
 def test_chunker_blank_body_yields_no_chunks() -> None:
     """An empty/whitespace-only document produces no chunks (nothing to index)."""
     assert chunk_markdown("") == []
@@ -199,9 +232,9 @@ def test_title_match_ranks_above_body_match(conn: sqlite3.Connection) -> None:
 def test_integrity_check_passes_on_consistent_index(conn: sqlite3.Connection) -> None:
     """The phase-gate command (rank form) runs clean when the sync owns all writes.
 
-    Rank form (-1) is required: the plain 'integrity-check' verifies only the FTS
-    index's internal structure and does NOT compare against an external content table
-    (empirically pinned on SQLite 3.51.3 during T2.13).
+    Rank form (-1) is required: the plain 'integrity-check' detects nothing on
+    SQLite 3.50.4 or 3.51.3; the rank form detects both desync directions on the
+    suite's SQLite 3.50.4 (pinned by the out-of-band delete/insert tests below).
     """
     repo = KnowledgeRepo(conn)
     _replace_drive_doc(repo, body="## A\ncontent alpha\n")
@@ -209,12 +242,28 @@ def test_integrity_check_passes_on_consistent_index(conn: sqlite3.Connection) ->
     conn.execute("INSERT INTO knowledge_fts(knowledge_fts, rank) VALUES('integrity-check', -1)")
 
 
+def test_integrity_check_raises_after_out_of_band_delete(conn: sqlite3.Connection) -> None:
+    """A raw knowledge-row DELETE leaves orphaned index entries: caught loudly.
+
+    The T2.13-specced direction: the repo populates the index, a knowledge row is
+    deleted out-of-band, and the rank-form integrity-check must raise.
+    """
+    repo = KnowledgeRepo(conn)
+    _replace_drive_doc(repo, body="## A\ncontent alpha\n")
+    conn.execute("DELETE FROM knowledge WHERE file_id = 'f1'")  # bypasses the FTS side
+
+    with pytest.raises(sqlite3.DatabaseError):
+        conn.execute("INSERT INTO knowledge_fts(knowledge_fts, rank) VALUES('integrity-check', -1)")
+
+
 def test_integrity_check_raises_after_out_of_band_insert(conn: sqlite3.Connection) -> None:
     """A content row inserted without the FTS side desyncs the index: caught loudly.
 
-    (Direction note: extra INDEX entries after a raw content DELETE are not caught by
-    integrity-check; a CONTENT row missing from the index is. Both desyncs are
-    prevented by the repo owning all writes — this pins the detection that exists.)
+    (Direction note, verified on the suite's SQLite 3.50.4: the rank form detects
+    BOTH desync directions — a content row missing from the index (this test) and
+    the orphaned index entries after a raw content DELETE (the delete test above).
+    The plain form detects nothing on 3.50.4 or 3.51.3; the repo owning all writes
+    is what prevents both desyncs in the first place.)
     """
     repo = KnowledgeRepo(conn)
     _replace_drive_doc(repo, body="## A\ncontent alpha\n")

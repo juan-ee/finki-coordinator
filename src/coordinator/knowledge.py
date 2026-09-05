@@ -18,14 +18,20 @@ def chunk_markdown(body: str) -> list[Chunk]:
     document without any '## ' heading is one chunk; a blank document yields no chunks;
     duplicate headings get an occurrence suffix ("Notes (2)") so the cache's
     UNIQUE(file_id, heading) constraint can hold. Bodies are stripped at the edges.
+    '## ' lines inside a ``` / ~~~ code fence are body text, not headings: a fence
+    line (leading ``` or ~~~, trailing text allowed) toggles fence state, and an
+    unclosed fence suppresses splits to the end of the document.
     """
     if body.strip() == "":
         return []
 
     headings: list[str | None] = []
     regions: list[list[str]] = []
+    in_fence = False
     for line in body.splitlines():
-        if line.startswith("## "):
+        if line.startswith(("```", "~~~")):
+            in_fence = not in_fence  # the fence line itself stays in the body
+        if not in_fence and line.startswith("## "):
             headings.append(line[3:].strip())
             regions.append([])
             continue

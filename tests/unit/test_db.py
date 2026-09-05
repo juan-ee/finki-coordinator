@@ -216,8 +216,29 @@ def test_fresh_and_upgrade_paths_converge(tmp_path: pathlib.Path) -> None:
         # the v5 fixture's stored DDL differs from schema.sql's in comments and
         # whitespace. (ALTER TABLE DROP COLUMN itself does rewrite the stored text,
         # so the upgrade path's members DDL is pinned below to carry no status_days.)
-        for table in ("members", "checkins", "settings"):
+        for table in ("members", "checkins", "settings", "knowledge"):
             assert _column_names(upgraded, table) == _column_names(fresh, table)
+        # The knowledge DDL exists in TWO copies (schema.sql 001 vs db.py 003): the
+        # v5 fixture + migrate path builds it from 003 alone, so its columns are
+        # pinned here against the exact 001 declaration order — the two copies
+        # cannot drift apart silently.
+        assert _column_names(upgraded, "knowledge") == [
+            "chunk_id",
+            "file_id",
+            "path",
+            "title",
+            "heading",
+            "body",
+            "modified_time",
+            "fetched_at",
+        ]
+        # The external-content FTS5 index must exist on both paths (FTS5 virtual
+        # tables appear in sqlite_master with type = 'table').
+        for store in (upgraded, fresh):
+            fts = store.execute(
+                "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'knowledge_fts'"
+            ).fetchone()
+            assert fts is not None and fts[0] == 1
         upgraded_tables = {
             str(row["name"])
             for row in upgraded.execute("SELECT name FROM sqlite_master WHERE type = 'table'")

@@ -314,9 +314,9 @@ Google Drive (the record — team-edited):     data/project/ (agent workspace, l
   the index never pretends to hold text it cannot reliably extract).
   `INSERT INTO knowledge_fts(knowledge_fts, rank)
   VALUES('integrity-check', -1)` is the phase-gate verification command — the rank
-  form is required because the plain form verifies only the FTS index's internal
-  structure and does not compare against an external content table (pinned on
-  SQLite 3.51.3 during T2.13).
+  form is required: the plain form detects nothing on SQLite 3.50.4 or 3.51.3,
+  while the rank form detects both desync directions (an out-of-band knowledge-row
+  delete and an out-of-band insert) on the suite's SQLite 3.50.4 (T2.13).
 - **READ — `knowledge_search`** (coordinator tool): returns the top chunks
   (file_id / path / title / heading). The agent then reads the **live original on
   Drive** (`$GAPI` download/get) before quoting it — the index is a finding aid;
