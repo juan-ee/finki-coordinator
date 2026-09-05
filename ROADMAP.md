@@ -480,7 +480,10 @@ Pi/human; the agent only produces/refreshes the verification script.
   knowledge SKILL.md: add the auto-refresh-on-search line (T2.23 read gate, the
   runtime behavior the gate observed), an explicit "never read local kb_sync-style
   copies — they are not a designed artifact; read the LIVE Drive original", and
-  "ids are internal — render paths/titles, never raw file_ids". Surface the template
+  "ids are internal — render paths/titles, never raw file_ids"; define the
+  Drive-side journal destination (no `journal/` folder exists in the knowledge base,
+  so the skill's "matching Drive folder" was unresolvable — the bot uploaded to the
+  root; convention established in-gate: `journal/` on Drive). Surface the template
   decision on installing `prompts/skills/*` into the runtime skill store (nothing
   installs them today; Hermes' skill curator filled the gap with an agent-authored
   skill that misdirected the bot — see phase2.md deviations 2026-09-05) — owner call

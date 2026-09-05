@@ -247,6 +247,21 @@ docker compose exec gateway python3 -c "import sqlite3; c = sqlite3.connect('/op
       counts line). Verify in the **Drive web UI**: the file exists with today's
       content, and a DM search finds it immediately. Record the Drive path:
       ____________.
+      **✗ 2026-09-05 — FAIL as run (3 defects):**
+      (1) local write OK (`data/project/journal/2026-09-05.md`, 164 bytes);
+      (2) upload landed in the DRIVE ROOT as `journal-2026-09-05.md` — no `journal/`
+      folder exists on Drive; the "matching Drive folder" destination was never
+      established anywhere (template gap the bot filled with a guess);
+      (3) the MANDATORY write-through one-shot never ran — no counts line; cache
+      verified 0 journal rows afterwards.
+      (Content note: not a fabrication — the operator's ask instructed "puedes decir
+      que hoy me reuní con José y David"; the bot obeyed faithfully.)
+      Frictions: 2+ Tirith HIGH approvals on the `GAPI=…; $GAPI …` pattern (~3 min,
+      iteration 12/500); the agent installed Google API deps into a new venv
+      (`/opt/data/venvs/gapi`) on its own initiative (runtime mutation — benign
+      outcome, uncontrolled mechanism). Re-run (Spanish ask, single message bundling
+      append + upload-to-folder + one-shot) after the Drive-side `journal/` folder
+      convention is settled — see deviations.
 - [ ] **DOWN proof of the round trip:** in the Drive web UI, append a line containing
       a third distinctive phrase (record: ____________) to the uploaded note → run
       `make sync` on the Pi host → DM *"Search the knowledge base for ____________"*
@@ -263,9 +278,17 @@ docker compose exec gateway python3 -c "import sqlite3; c = sqlite3.connect('/op
 
 ## 7. Runtime AGENTS.md reflects v6
 
-- [ ] Ask the bot: *"What is your query map?"* → the answer matches the v6 map
+- [x] Ask the bot: *"What is your query map?"* → the answer matches the v6 map
       (mission → Drive brief; questions → `knowledge_search` then live read; tasks →
       kanban; who → `member_list`; **no** `search_files`-under-docs, **no** mirror).
+      **✓ 2026-09-05:** all five v6 entries correct (mission → `docs/product/brief.md`
+      on Drive read before big decisions; questions → `knowledge_search` + live
+      confirm; status → `journal/` + `checkins_by_date`; tasks → `kanban_*` tools,
+      never files; who → `member_list`, never a file) plus two coherent extras
+      (inbox/ triage, templates/) drawn from the generated AGENTS.md; the two
+      cross-cutting rules stated unprompted (Drive is the record / DB is the roster
+      truth; schedules via tools so relays regenerate — never by hand). No
+      `search_files`, no mirror.
 - [ ] If the roster changed since the last render:
       `uv run python scripts/generate_agents_md.py --db data/hermes/hermes-coord.db`
       (venv python on the Pi) regenerates deterministically.
@@ -353,6 +376,19 @@ Deviations observed (if any):
   upstream evaluation), the verify-`next_run_at`-after-apply practice, and the
   STT voice-transcription reference (backup only); (c) stale `~/.hermes/kb_sync/`
   staging DELETED (verified absent). Step 3 box 2 re-runs in a fresh DM session.
+- 2026-09-05 (step-5 run): (a) the Drive-side journal destination was never defined —
+  no `journal/` folder exists in the knowledge base, so the skill's "matching Drive
+  folder" is unresolvable and the bot guessed the root; (b) the mandatory
+  write-through one-shot has no teeth at the prompt layer (SKILL.md says it, the bot
+  skipped it) — candidates: a stronger imperative line in T2.25, or a post-upload
+  counts-line check the operator can demand; (c) the Tirith approval gate interacts
+  badly with the `VAR=…; $VAR …` invocation pattern (HIGH nested-command blocks per
+  call) — the removed curator skill's hardcoded invocation was lost with it, so the
+  fresh session re-derived it and built a venv (`/opt/data/venvs/gapi`) on its own.
+  All three feed T2.25; (a) is resolved in-gate by the operator creating `journal/`
+  on Drive and moving the uploaded file there. (An earlier "fabricated content"
+  reading was RETRACTED — the operator's own ask instructed "puedes decir que hoy
+  me reuní con José y David"; the bot obeyed faithfully.)
 - 2026-09-05 (new finding): the Pi's `.env` still carries a dead v5 rclone stanza
   (ini-format `[gdrive]` section, ~lines 25–31: `type = drive`, `client_id`,
   `client_secret`, `scope`, `token`, `team_drive`) — invisible to the pre-flight
