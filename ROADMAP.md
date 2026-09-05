@@ -452,7 +452,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   pre-flight (9 tools; no `knowledge_sync`), re-verify step 2 (script round-trip +
   no-op) and step 3 (search diacritics on real data) against the script, remove the
   v6.1 resumption note, then run the remaining boxes (5–9) fresh.
-- [ ] **T2.22 `DOC`/`chore` — small template fixes logged during the gate** — gitignore
+- [x] **T2.22 `DOC`/`chore` — small template fixes logged during the gate** — gitignore
   `config/config.yaml` (any deployment leaves the tree clean); fix the gate's stale
   SQLite-version note (in-container 3.53.4, not 3.50.4). Acceptance: fresh-clone
   `git status` clean after setup.
@@ -519,6 +519,12 @@ Pi/human; the agent only produces/refreshes the verification script.
 
 *(agents append here: date, task, deviation/observation)*
 
+- 2026-09-05 T2.22 — DOC/chore (no review protocol required). config/config.yaml
+  gitignored; Pi acceptance: after pull, git status shows only the operator's own
+  .env.bak-20260905-095236 backup artifact (operator file to remove, not a template
+  concern; git check-ignore confirms the config line). Gate SQLite note fixed in
+  docs/verify/phase2.md — the rank-form requirement stands on the suite's 3.50.4 AND
+  the container's 3.53.4 (T2.21's rewrite inherits the corrected text).
 - 2026-09-05 T2.23 — review verdict: no hard violations (both axes, fixed point
   c8d0d78; fix-delta re-review clean). Arbitrations applied: (1) the degraded path
   widened to the WHOLE freshness seam — a raising last_check (e.g. sqlite lock while
