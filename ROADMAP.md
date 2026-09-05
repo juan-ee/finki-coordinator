@@ -433,7 +433,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   Acceptance: `make check`; on the Pi, a real round + a no-op second round.
   Notes: the freshness layering (read-through TTL gate, post-upload write-through,
   Changes-API cursor) is deliberately OUT of this task — T2.23/T2.24.
-- [ ] **T2.19 Wire the schedule: `make sync` + hermes cron** — `make sync` target
+- [x] **T2.19 Wire the schedule: `make sync` + hermes cron** — `make sync` target
   wrapping the script via `uv run`; documented nightly `hermes cron` job (proposal §8.1
   runbook line + docker/README note; conversational creation is the operator path).
   Acceptance: `make sync` performs a real round on the Pi; `hermes cron list` shows
@@ -519,6 +519,22 @@ Pi/human; the agent only produces/refreshes the verification script.
 
 *(agents append here: date, task, deviation/observation)*
 
+- 2026-09-05 T2.19 — review verdict: no hard violations (spec axis, fixed point dce8afa).
+  Judgement calls: (1) the compose file-level mount
+  ./scripts/sync_knowledge.py:/opt/data/scripts/sync_knowledge.py:ro is beyond the
+  literal task text but is the ENABLING change for the documented job — hermes cron
+  --script resolves under ~/.hermes/scripts/, so without the mount the nightly job
+  fails every run; (2) the §8.1 conversational phrasing names the raw command without
+  encoding --script/--no-agent — a literal-minded bot could create an agent-mediated
+  job; mitigated by the same line's "no LLM in the loop" + the CLI equivalent.
+  Acceptance evidence (Pi): make sync performs a real round (no-op: 19 unchanged @
+  watermark 2026-09-05T09:25:35Z, exit 0); the job was created via the documented CLI
+  (hermes cron create '30 3 * * *' --name knowledge-sync --script sync_knowledge.py
+  --no-agent); hermes cron list shows it; a forced hermes cron run SUCCEEDED and
+  delivered the script's metadata-only report verbatim (no LLM invoked). Ops note: the
+  first forced run FAILED with "Script not found" until docker compose up -d recreated
+  the container with the new mount — bind mounts apply only at container creation
+  (incident acked).
 - 2026-09-05 T2.18 — review verdict: no hard violations (two fresh axes, fixed point
   44ae92f; delta re-reviews clean). Fix round arbitrated UP one [JUDGEMENT] flagged
   independently by both axes: unparseable modifiedTime is now SKIPPED in every mode — a
