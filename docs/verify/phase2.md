@@ -24,8 +24,11 @@ decides).
 
 ## Pre-flight
 
-- [ ] Pi repo pulled to the shipped phase-2 commit (`git log --oneline -1`; record:
+- [x] Pi repo pulled to the shipped phase-2 commit (`git log --oneline -1`; record:
       ____________). Working tree clean (`git status`).
+      **✓ 2026-09-05 (agent-run over SSH):** Pi at `3577477` (the T2.21 gate
+      refresh); tree clean except the operator's own `.env.bak-20260905-095236`
+      backup artifact (recorded in the T2.22 notes).
 - [ ] Committed seed carries placeholder IDs only:
       `git show HEAD:config/members.seed.yaml | grep telegram_id` → every value
       `null`. (The Pi's local `data/hermes/hermes-coord.db` may still hold real IDs —
@@ -51,6 +54,10 @@ decides).
       **9** (`member_add`, `member_update`, `member_list`, `member_delete`,
       `checkin_submit`, `checkins_by_date`, `knowledge_search`, `setting_get`,
       `setting_set`) and **no `knowledge_sync`**. Record: ____________.
+      Headless corroboration (2026-09-05, agent-run in-container census):
+      count 9 — member_add/update/list/delete, checkin_submit, checkins_by_date,
+      knowledge_search, setting_get/set; `knowledge_sync present: False`. The DM
+      listing closes the box.
 
 ## 1. $GAPI works in-container — THE FIRST ITEM (STOP if it fails)
 
@@ -162,13 +169,20 @@ that motivated the switch (proposal §11).
       hits are false positives: the Spanish customs term "ad-valorem" in
       Estudio_Mercado_Limpieza_Laser_Ecuador.md). Bot disclosed the placeholder
       incident unprompted; PDF + Logo correctly title/path-only.
-- [ ] **First script round (real, ingests):** upload a fresh small markdown doc (or
+- [x] **First script round (real, ingests):** upload a fresh small markdown doc (or
       append a line to an existing one) in the Drive web UI, then on the Pi host run
       `make sync` → exit 0; the report ingests exactly the changed file(s) and prints
       the post-round watermark. Record: ____________.
-- [ ] **Second script round is a no-op:** `make sync` again with no Drive-side changes
+      **✓ 2026-09-05 (operator edited `Agencia_Automatizacion_IA_PYMES_Ecuador_
+      CONSOLIDADO.md` in the Drive web UI; agent-run `make sync` over SSH):**
+      `1 text + 0 index-only selected, 18 unchanged` → ingested 1, failed 0,
+      watermark → `2026-09-05T19:13:54Z`. Cache after: 19 files / 166 chunks
+      (the doc re-indexed at 8 chunks).
+- [x] **Second script round is a no-op:** `make sync` again with no Drive-side changes
       → 0 ingested (every file unchanged), exit 0, watermark unchanged. Record:
       ____________.
+      **✓ 2026-09-05 (agent-run):** `0 selected, 19 unchanged` → ingested 0,
+      failed 0, watermark unchanged (`2026-09-05T19:13:54Z`), exit 0.
 
 ## 3. knowledge_search — diacritics + live confirmation (READ)
 
@@ -230,6 +244,10 @@ docker compose exec gateway python3 -c "import sqlite3; c = sqlite3.connect('/op
 - [ ] If the roster changed since the last render:
       `uv run python scripts/generate_agents_md.py --db data/hermes/hermes-coord.db`
       (venv python on the Pi) regenerates deterministically.
+      **✓ 2026-09-05 (agent-run):** regenerated even though the roster did not
+      change — the T2.20 generator rewrite (deterministic-script wording) postdates
+      the previous render (11:26Z, still said `knowledge_sync`); re-render → v6.1
+      text, tree untouched. The query-map DM ask remains for the human (box above).
 
 ## 8. Member lifecycle spot-checks (door-first flow, live)
 
