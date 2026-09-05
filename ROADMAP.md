@@ -456,7 +456,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   `config/config.yaml` (any deployment leaves the tree clean); fix the gate's stale
   SQLite-version note (in-container 3.53.4, not 3.50.4). Acceptance: fresh-clone
   `git status` clean after setup.
-- [ ] **T2.23 Read-through freshness gate on `knowledge_search` (proposal §3)** — TDD.
+- [x] **T2.23 Read-through freshness gate on `knowledge_search` (proposal §3)** — TDD.
   Before matching, the search path checks a last-freshness-check timestamp (injected
   `Clock`); older than `knowledge.freshness_ttl_minutes` (config knob, default ~10,
   schema + loader) → run the deterministic incremental sync (T2.18 engine) first, then
@@ -519,6 +519,30 @@ Pi/human; the agent only produces/refreshes the verification script.
 
 *(agents append here: date, task, deviation/observation)*
 
+- 2026-09-05 T2.23 — review verdict: no hard violations (both axes, fixed point
+  c8d0d78; fix-delta re-review clean). Arbitrations applied: (1) the degraded path
+  widened to the WHOLE freshness seam — a raising last_check (e.g. sqlite lock while
+  reading the stamp) degrades the round instead of failing the read; no stamp is
+  written on a failed read (correct: the debounce stamp guards the Drive sync, and a
+  stamp would falsely mark the cache checked under the same lock); (2) the gate's
+  report fallback anchored to the "ingested" line — anything else yields the fixed
+  "no report output", so nothing unanchored reaches the LLM summary. Judgement calls:
+  (1) the gate stamps via raw settings-table SQL, not SettingsRepo (the stamp key is
+  deliberately outside repositories.DEFAULTS so setting_get/set cannot touch it); a
+  settings-layer change would only err toward an extra refresh — benign; (2)
+  timeout_seconds constructor knob is beyond spec but pins the bounded-subprocess
+  contract at its default; (3) the ImportError guard around the lazy config import is
+  defensive for container venvs without jsonschema/PyYAML; (4) two gateway threads
+  due simultaneously both refresh — a double sync, not a correctness break (upsert
+  stamp idempotent, sync idempotent, WAL absorbs the second connection); (5) the
+  compose ./config:/opt/data/config:ro mount is the enabling change that makes the
+  config knob real in-container (without it the knob lives in a file the container
+  never sees) — same ruling as T2.19's script mount. Acceptance evidence (Pi): gate
+  wired at ttl 10 (operator config.yaml predates the knob → loader default, backwards
+  compat proven live); Drive-side upload → debounced search MISSES it (0 hits);
+  stamp backdated 11 min → the very next search runs the sync subprocess and the
+  edit is in that search's results; following search debounces. Cache left
+  consistent via trash + --resync purge.
 - 2026-09-05 T2.20 — review verdict: no hard violations (both axes, fixed point
   deb1f1e). Arbitrations applied: (1) the deleted B5 "watermark advances" half is
   pinned literally again (empty + whitespace script tests assert repo.watermark());
