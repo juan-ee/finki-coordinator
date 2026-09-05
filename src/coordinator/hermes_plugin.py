@@ -440,12 +440,15 @@ class FreshnessGate:
         return FreshnessOutcome("refreshed", self._counts_line(result.stdout))
 
     def _counts_line(self, stdout: str) -> str:
-        """Extract the script's ingested/watermark line (metadata only — rule 11)."""
-        lines = [line.strip() for line in stdout.strip().splitlines() if line.strip()]
-        for line in lines:
+        """Extract the script's ingested/watermark line (metadata only — rule 11).
+
+        Falls back to a fixed note when the report shape ever changes: nothing
+        unanchored may flow from the script into the LLM-facing summary.
+        """
+        for line in (part.strip() for part in stdout.strip().splitlines()):
             if line.startswith("ingested"):
                 return line
-        return lines[-1] if lines else "no report output"
+        return "no report output"
 
     def _settings_row(self) -> str | None:
         """Read the stamp row straight from the settings table (raw: not in DEFAULTS)."""

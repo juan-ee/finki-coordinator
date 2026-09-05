@@ -424,3 +424,26 @@ def test_gate_refresh_timeout_degrades_and_still_stamps(
     assert outcome.status == "degraded"
     assert "timed out" in outcome.detail
     assert _stamp(tmp_path / "h.db") == NOW.isoformat()
+
+
+def test_raising_last_check_degrades_instead_of_failing_the_read(
+    knowledge: KnowledgeRepo,
+) -> None:
+    """Reading never hard-fails: a seam that raises while READING the stamp (e.g. a
+    sqlite lock) degrades the round — the search still serves the cache."""
+    _seed(knowledge)
+
+    class BrokenReadGate(FakeGate):
+        def last_check(self) -> str | None:
+            raise sqlite3.OperationalError("database is locked")
+
+    gate = BrokenReadGate(last_check=_iso(30))
+
+    result = knowledge_search(
+        {"query": "old marker"}, None, None, None, FakeClock(), knowledge, gate
+    )
+
+    assert result["ok"] is True
+    assert [h["file_id"] for h in result["data"]["results"]] == ["old-doc"]
+    assert "freshness check FAILED" in result["summary"]
+    assert "OperationalError" in result["summary"]

@@ -688,17 +688,19 @@ def knowledge_search(
         )
     refreshed_note = ""
     degraded_note = ""
-    if freshness is not None and freshness_due(
-        freshness.last_check(), clock.now(), freshness.ttl_minutes()
-    ):
+    if freshness is not None:
         try:
-            outcome = freshness.refresh(clock.now().isoformat())
+            due = freshness_due(freshness.last_check(), clock.now(), freshness.ttl_minutes())
+            outcome = None
+            if due:
+                outcome = freshness.refresh(clock.now().isoformat())
         except Exception as exc:  # noqa: BLE001 - reading never hard-fails (T2.23)
             outcome = FreshnessOutcome("degraded", f"{type(exc).__name__}: {exc}")
-        if outcome.status == "degraded":
-            degraded_note = outcome.detail
-        else:
-            refreshed_note = outcome.detail
+        if outcome is not None:
+            if outcome.status == "degraded":
+                degraded_note = outcome.detail
+            else:
+                refreshed_note = outcome.detail
     try:
         hits = knowledge.search(query, effective)
     except KnowledgeSearchError as exc:
