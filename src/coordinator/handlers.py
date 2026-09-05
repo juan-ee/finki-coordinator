@@ -13,7 +13,7 @@ the actionable one-line summary in "summary" and empty "data".
 """
 
 import re
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from typing import Protocol, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -27,6 +27,7 @@ from .repositories import (
     MembersRepository,
     SettingsRepository,
 )
+from .syncing import canonical_modified_time
 
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _DIGITS_RE = re.compile(r"[0-9]+")  # ASCII only: Unicode Nd digits must not pass
@@ -595,25 +596,6 @@ def _setting_value_error(key: str, value: str) -> str | None:
     return None
 
 
-def _canonical_modified_time(value: str) -> str:
-    """Normalize an RFC3339 modified_time to canonical UTC 'YYYY-MM-DDTHH:MM:SSZ'.
-
-    A trailing Z is read as +00:00, an explicit offset is converted to UTC, and a
-    timestamp without an offset is treated as UTC (the repo is UTC-anchored, and
-    naive astimezone() would smuggle in the host's locale). An unparseable value is
-    returned unchanged - the documented fallback that keeps bad Drive metadata
-    visible in the cache instead of silently rewriting it.
-    """
-    candidate = value[:-1] + "+00:00" if value.endswith("Z") else value
-    try:
-        parsed = datetime.fromisoformat(candidate)
-    except ValueError:
-        return value
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC).isoformat(timespec="seconds")[:-6] + "Z"
-
-
 def knowledge_sync(
     payload: dict[str, object],
     members: MembersRepository,
@@ -705,7 +687,7 @@ def knowledge_sync(
             file_id=file_id,
             path=path,
             title=title,
-            modified_time=_canonical_modified_time(modified_time),
+            modified_time=canonical_modified_time(modified_time),
             fetched_at=fetched_at,
             chunks=chunks,
         )
