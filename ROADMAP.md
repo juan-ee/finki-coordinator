@@ -361,7 +361,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   `'integrity-check'` passes on a consistent index and RAISES after an out-of-band
   knowledge-row delete.
 
-- [ ] **T2.14 — `knowledge_sync` tool (D2)** — two-call protocol, agent-mediated $GAPI
+- [x] **T2.14 — `knowledge_sync` tool (D2)** — two-call protocol, agent-mediated $GAPI
   (pure core; no network, no new deps): call 1 `{}` (plan) →
   `data: {watermark, files_hint}` — the agent lists the Drive root via `$GAPI`,
   filters files with `modifiedTime` past the watermark, downloads those; call 2
@@ -930,6 +930,23 @@ Pi/human; the agent only produces/refreshes the verification script.
   (6) malformed MATCH raises OperationalError from the repo primitive — routed into
   T2.15's block (ok:False at the tool layer); (7) hygiene: .scratch/ review-probe
   debris gitignored so a bare make check passes in the working tree.
+- 2026-09-04 T2.14 — review verdict: spec PASS (every block clause probed hands-on:
+  two-call protocol, non-text rows, validate-then-apply, empty-ingest no-op, nested
+  model-facing schema, 5-tuple wiring); standards axis 1 HARD (the unwired-repo
+  KeyError guard shipped with no covering test) + 3 judgement. ONE fix round d8b2d45:
+  guard test added (red→green), ToolSpec.takes_knowledge declared NotRequired[bool]
+  (docstring now true; explicit False entries kept; the monkeypatch ToolSpec literal
+  omitting the key became type-correct), knowledge_sync docstring documents the
+  lenient contract (files:null = plan call per the handlers-wide null-is-absent
+  convention; content:null = non-text; same-batch duplicate file_ids last-wins with
+  synced counting entries), mirror-test docstring softened to field-level claims;
+  delta re-review: FIXED, no regressions; make check green (304). Judgement calls:
+  (1) stale re-ingest can lower the MAX watermark (older modified_time wins) —
+  pre-documented accepted design (T2.13 note 4); (2) the lenient-direction drift
+  (handler accepts null where the schema forbids it) is the repo-wide convention,
+  documented rather than tightened; (3) the handler-signature polymorphism
+  (takes_knowledge + two casts in dispatch) was reviewed as the narrowest mypy-strict
+  solution — the 8 non-knowledge handlers keep the uniform 5-dep signature.
 - 2026-09-04 T2.6 — review verdict: standards axis 2 HARD (the documented local-seed
   path was not actually gitignored — guidance claimed "gitignored" with no rule;
   multi-line test docstring vs rule 6); spec axis PASS with the gitignore gap as a
