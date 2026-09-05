@@ -139,7 +139,16 @@ class GapiCliTransport:
         else:
             argv = ["python3", self._gapi_path, *args]
             cwd = None
-        result = subprocess.run(argv, capture_output=True, text=True, cwd=cwd, check=False)
+        result = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            check=False,
+            # never inherit stdin: docker compose exec -T would otherwise consume
+            # the calling shell's remaining input (piped batches, cron feeds)
+            stdin=subprocess.DEVNULL,
+        )
         if result.returncode != 0:
             detail = (result.stderr or result.stdout).strip().splitlines()
             tail = detail[-1] if detail else "no output"

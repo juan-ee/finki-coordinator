@@ -342,3 +342,23 @@ def test_downloads_happen_inside_the_transport_declared_workspace(
     assert outcome.ingested == 4
     assert transport.seen_output_dirs, "downloads must have happened"
     assert all(directory.is_relative_to(workspace) for directory in transport.seen_output_dirs)
+
+
+def test_cli_runs_with_stdin_detached(monkeypatch, tmp_path: Path) -> None:
+    """The CLI subprocess must never inherit stdin: docker compose exec -T otherwise
+    consumes the calling shell's remaining input (bit the acceptance run and any
+    piped batch of rounds)."""
+    captured: dict[str, object] = {}
+
+    def fake_run(argv: list[str], **kwargs: object) -> object:
+        captured.update(kwargs)
+        return type("R", (), {"returncode": 0, "stdout": "[]", "stderr": ""})()
+
+    monkeypatch.setattr(sync_script.subprocess, "run", fake_run)
+    transport = sync_script.GapiCliTransport(
+        mode="direct", gapi_path="/nowhere/google_api.py", compose_dir=tmp_path
+    )
+
+    transport.list_children(None)
+
+    assert captured["stdin"] == sync_script.subprocess.DEVNULL
