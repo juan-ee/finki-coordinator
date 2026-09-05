@@ -951,6 +951,19 @@ Pi/human; the agent only produces/refreshes the verification script.
   documented rather than tightened; (3) the handler-signature polymorphism
   (takes_knowledge + two casts in dispatch) was reviewed as the narrowest mypy-strict
   solution — the 8 non-knowledge handlers keep the uniform 5-dep signature.
+- 2026-09-04 founder-ID history purge (owner-directed follow-up to the T2.6 flag) —
+  git filter-branch rewrote ALL refs: every blob and commit message containing the
+  leaked founder Telegram ID now carries [redacted-founder-id] (members.seed.yaml in
+  historic commits: telegram_id: null). Old refs/reflogs/objects expired and pruned;
+  verified: git grep + pickaxe over main = zero occurrences; the only remaining ref
+  is main (453b2e4). CONSEQUENCES: (1) every commit SHA cited in this Notes log
+  before the purge describes pre-rewrite history and no longer resolves — the
+  rewrite is SHA-destructive by nature; (2) the origin remote still hosts the old
+  history — the owner must force-push (git push --force origin main) and re-clone
+  the Pi (or fetch + reset --hard origin/main after the force-push); (3) GitHub-side
+  cached views/PRs may retain the old commits until contacted — owner decision;
+  (4) docs/verify/phase1.md gate evidence now reads [redacted-founder-id] — the
+  sign-off record remains readable minus the leak.
 - 2026-09-04 T2.17 — MANUAL-GATE doc written (box stays UNCHECKED for the human).
   Phase-gate red team (AGENTS.md #4) attacked the knowledge subsystem: 13 attack
   tests, 6 real bugs — B1 lone-surrogate bind failure skipped the rollback and
