@@ -1,147 +1,152 @@
-# Phase 2 verification — knowledge base on the Pi (MANUAL GATE)
+# Phase 2 verification — member lifecycle & knowledge on the Pi (MANUAL GATE, v6)
 
 > **Human-only.** A coding agent cannot run this gate: it needs the Raspberry Pi, the
-> live Hermes container, the real rclone remote, and a human editing the Drive in a
-> browser. Work top to bottom; tick each `[ ]` as it passes; do not skip failures.
-> Active wall-clock time: ~45 min; the cadence observation (step 2) spans ~35–40 min
-> of passive waiting while the timer runs — do other work in between.
+> live Hermes container, the agent's google-workspace skill (`$GAPI`) against the real
+> Drive, and a human editing Drive in a browser. Work top to bottom; tick each `[ ]`
+> as it passes; do not skip failures.
+>
+> **STOP CONDITION (read before anything else):** step 1 verifies `$GAPI` works
+> in-container at our pinned `HERMES_REF`. If it does **not**, the phase **stops
+> there**: record the exact error + evidence, untick nothing, and report to the owner.
+> **No workarounds exist by design** — no rclone, no service accounts, no dependency
+> installs. The whole v6 knowledge loop rides on this one skill.
 
-**What phase 2 shipped** (the thing being verified): `scripts/sync.sh` (guarded rclone
-bisync wrapper, T2.1), `templates/` doc templates (T2.2), `project-template/` seed +
-`setup.sh` step 7 first-boot copy that never overwrites (T2.3). Deliberately NOT in
-this gate: backups (phase 4) and vector RAG (phase 5, forbidden until the team decides).
+**What phase 2 shipped** (the thing being verified, T2.5–T2.16): door-first onboarding
+(`scripts/allow.sh`, `member_add` with required `telegram_id`, owner-only
+`member_delete`), seed hygiene, the dead-weight cut (`status_days`, `digest_time`,
+compose Drive env, `sync.sh`), the knowledge subsystem (v6 schema +
+`knowledge_sync`/`knowledge_search` on an FTS5 cache), the digest uploading instead of
+syncing, and the persona/skills v6 guidance. Deliberately NOT in this gate: backups
+(phase 4) and vector RAG (phase 5, forbidden until the team decides).
 
-## 0. Pre-flight — carried-over DM verification (from the post-T1.9 abbreviated gate)
+## Pre-flight
 
-The T1.9 pin bump (HERMES_REF → v2026.8.31 = Hermes v0.21.0, commit 29112bef) was
-executed on the Pi on 2026-09-02 — build 488 s, then headless verification only
-(`hermes --version`, `hermes plugins list`, Telegram long-poll live, cron intact).
-Its **DM half was left open with the owner** and is carried into this gate so it gets
-verified on the new build. If you already did these after the bump, tick with a date
-and pointer to the evidence instead of repeating them.
+- [ ] Pi repo pulled to the shipped phase-2 commit (`git log --oneline -1`; record:
+      ____________). Working tree clean (`git status`).
+- [ ] Committed seed carries placeholder IDs only:
+      `git show HEAD:config/members.seed.yaml | grep telegram_id` → every value
+      `null`. (The Pi's local `data/hermes/hermes-coord.db` may still hold real IDs —
+      that is runtime state, not the committed seed.)
+- [ ] `.env` on the Pi contains Telegram + OpenRouter (+ `HERMES_UID/GID`) and **no**
+      `GOOGLE_DRIVE_*`/`RCLONE_*` lines (`grep -E 'GOOGLE_DRIVE|RCLONE' .env` → empty).
+- [ ] Container is up and carries the new plugin: ask the bot in a DM to list its
+      coordinator tools → **10** tools incl. `member_delete`, `knowledge_sync`,
+      `knowledge_search`.
 
-In a DM with the bot:
+## 1. $GAPI works in-container — THE FIRST ITEM (STOP if it fails)
 
-- [ ] **Persona voice:** the bot replies in the operator tone from `SOUL.md` (not a
-      generic assistant; ends asks with a next-step proposal).
-- [ ] **7 coordinator tools visible:** ask it to list its coordinator tools — all of
-      `member_add, member_update, member_list, checkin_submit, checkins_by_date,
-      setting_get, setting_set` are present and named (schema descriptions ride in the
-      JSON schema since T1.8 — spot-check one tool's stated purpose matches).
-- [ ] **Roster correct:** `member_list` returns the 4 founders
-      (Juan/Jose/Luis/David) with timezones and wake times.
-- [ ] **Kanban reachable:** create + list a kanban task (top-level `toolsets` flag
-      still set: `docker compose exec gateway hermes config get toolsets`).
+- [ ] In a DM, ask the bot: *"List the files in our Drive root using your
+      google-workspace skill."* → the agent invokes `$GAPI` and returns a real file
+      listing from the team's Drive.
 
-## Preconditions (all must hold before starting)
+**If this box cannot be ticked:** STOP the entire phase here. Record on this page:
+`hermes --version` output, the exact agent/tool error, and anything the agent logs.
+Report to the owner. Do NOT attempt rclone, service accounts, manual OAuth, or any
+other fallback — the v6 design has none on purpose (proposal §6.9).
 
-- [ ] Pi repo pulled to the intended commit: `git log --oneline -1` matches the
-      shipped phase-2 commit (`7b2b8b1` or later).
-- [ ] `.env` still holds the Drive trio + `RCLONE_REMOTE` (verified live in the
-      phase-1 gate). **Decide the sync scope now:** `RCLONE_ROOT_FOLDER_ID` empty
-      means the wrapper bisyncs the ENTIRE Drive root ⇄ `data/project/` (T2.1
-      judgement call #1). On the consumer Drive account, create a dedicated folder
-      (e.g. `Fink-Labs`), paste its folder id into `.env` as
-      `RCLONE_ROOT_FOLDER_ID=…`. Every scope change after the first baseline requires
-      re-running step 1's resync.
-- [ ] `rclone` installed on the Pi **host** (`rclone version` — sync.sh runs
-      host-side and reads `~/.config/rclone/rclone.conf` written by setup.sh step 3).
-- [ ] `./scripts/setup.sh` re-run on the Pi in real mode, exit 0 — now 7 steps; the
-      new step `7/7` seeds `data/project/` from `project-template/`.
-- [ ] **Seed is first-boot-only:** edit `data/project/README.md` (add a line), re-run
-      `./scripts/setup.sh`, confirm the edit survives and step 7 reports
-      `(... already existed)` counts — the never-overwrite guarantee (T2.3).
+## 2. knowledge_sync round-trip — DOWN (Drive → cache)
 
-## 1. Bisync baseline + cadence observed
+- [ ] **Test data first (Drive web UI):** in the Drive root create/upload 2 small
+      markdown docs — `docs/notes/decisión.md` containing the word **decisión** and a
+      sentence with a distinctive phrase (record it: ____________), and
+      `docs/notes/howto-test.md` with a second distinctive phrase (record it:
+      ____________).
+- [ ] DM: *"Sync the knowledge base."* → the agent runs the plan call (watermark),
+      lists/selects/downloads via $GAPI, then ingests. The tool result reports
+      `synced: N` (N ≥ 2) and a watermark value. Record: ____________.
+- [ ] **Second sync is a no-op:** DM *"Sync the knowledge base"* again → the agent
+      lists, finds nothing past the watermark, and reports nothing new ingested
+      (no duplicate storage).
 
-```
-cd ~/finki-coordinator
-./scripts/sync.sh --resync --i-know-what-im-doing     # ONE-TIME baseline; read its output
-tail -20 data/logs/sync.log
-crontab -e   # add:  */20 * * * *  cd $HOME/finki-coordinator && ./scripts/sync.sh
-```
+## 3. knowledge_search — diacritics + live confirmation (READ)
 
-- [ ] Baseline resync exits 0; `data/logs/sync.log` shows the
-      `===== … bisync start (remote=… resync=1) =====` header and an end line with
-      `rc=0`. Timestamps are UTC.
-- [ ] Refusal guard still armed: `./scripts/sync.sh --resync` alone exits non-zero and
-      names `--i-know-what-im-doing`.
-- [ ] Cadence: at least TWO scheduled runs appear in `data/logs/sync.log` ~20 min
-      apart (plain `bisync start` headers, no `[boot]` tag), both `rc=0`.
-- [ ] Boot tag: run `./scripts/sync.sh --boot` once and confirm the
-      `[boot] bisync start` marker in the log (this is what the container-boot
-      invocation will look like).
-- [ ] **Bidirectional proof:** (a) `touch data/project/inbox/pi-side.txt` → within one
-      cycle the file appears on the Drive; (b) create `drive-side.txt` in the same
-      Drive folder in the browser → within one cycle it appears in
-      `data/project/inbox/` on the Pi. Clean both up afterwards.
+- [ ] DM: *"Search the knowledge base for decision."* → the hit list includes the
+      `decisión.md` document (accent-insensitive MATCH on real data).
+- [ ] DM: *"What exactly does that document say?"* → the agent **reads the live Drive
+      original via $GAPI** and quotes it (persona rule 6: the index is a finding aid).
+- [ ] DM: *"Search the knowledge base for ____________"* (the second doc's phrase) →
+      found, correct document identified.
 
-## 2. Conflict drill — same file edited on both sides, recover, no data loss
+## 4. FTS5 integrity-check (INDEX health)
 
-```
-cp -a data/project /tmp/project-backup-$(date -u +%Y%m%dT%H%M%SZ)   # safety net FIRST
+- [ ] With the bot idle, run in-container:
+
+```sh
+docker compose exec gateway python3 -c "import sqlite3; c = sqlite3.connect('/opt/data/workspace/hermes/hermes-coord.db'); c.execute("INSERT INTO knowledge_fts(knowledge_fts, rank) VALUES('integrity-check', -1)")"
 ```
 
-- [ ] Safety snapshot taken (the command above; this is the "no data loss" oracle).
-- [ ] Within one sync window: edit `data/project/docs/index.md` on the Pi (append
-      `PI side edit`) AND edit the same file in the Drive web UI (append
-      `DRIVE side edit`).
-- [ ] The next scheduled run FAILS LOUDLY: exit non-zero, and `data/logs/sync.log`
-      shows rclone naming the conflicting path (no silent side-picking).
-- [ ] **Recovery (the never-blind-resync procedure** — T4.2 will formalize this as
-      `docs/runbooks/bisync-recovery.md`; until then this box is the runbook):
-      1. Pause the cadence: `crontab -e` → comment out the sync line.
-      2. Read the conflict list from the last `sync.log` entry — note each path rclone
-         named.
-      3. Reconcile by hand: merge BOTH edits into one version of the file in
-         `data/project/` (the Drive web UI's file history has the other side's text).
-      4. Re-baseline: `./scripts/sync.sh --resync --i-know-what-im-doing` (guarded on
-         purpose — resync takes the reconciled state as the new baseline; skipping
-         step 3 is how bisync eats files).
-      5. Re-enable the cron line; one normal run; `rc=0` in the log.
-- [ ] **No data loss:** the recovered `docs/index.md` contains BOTH `PI side edit`
-      and `DRIVE side edit`; diff the backup against the recovered tree
-      (`diff -r /tmp/project-backup-* data/project`) and confirm every difference is
-      explained. Delete the backup only after this check.
+      exits 0 (clean). **The rank form is required** — the plain
+      `VALUES('integrity-check')` verifies only FTS-internal structure and does NOT
+      compare against the external content table (pinned on SQLite 3.50.4, T2.13).
 
-## 3. AGENTS.md regeneration
+## 5. UP path — upload after write (cache → Drive)
 
-```
-python scripts/generate_agents_md.py --db data/hermes/hermes-coord.db
-```
+- [ ] DM: *"Write a short journal note for today and make sure it reaches Drive."* →
+      the agent writes `journal/YYYY-MM-DD.md` locally and uploads it via
+      `$GAPI drive upload`. Verify in the **Drive web UI**: the file exists with
+      today's content. Record the Drive path: ____________.
+- [ ] **DOWN proof of the round trip:** in the Drive web UI, append a line containing
+      a third distinctive phrase (record: ____________) to the uploaded note → DM
+      *"Sync the knowledge base"* → DM *"Search the knowledge base for ____________"*
+      → the agent finds it and confirms against the live file.
 
-- [ ] The command rewrites `data/project/AGENTS.md` (deterministic render: roster
-      table, folder structure, query map).
-- [ ] Change something in the roster (add a fake member via DM, or edit the DB) →
-      regenerate → the rendered AGENTS.md reflects the change (then remove the fake
-      member and regenerate again).
-- [ ] The regenerated file reaches the Drive within one sync cycle (open it in the
-      browser and see the change) — the bot's runtime briefing is mirrored, not just
-      local.
+## 6. Digest end-to-end
 
-## 4. Doc-extraction check — a PDF on the Drive is readable by the agent
+- [ ] At the digest time (or after conversationally creating/adjusting a test digest
+      job for a near time — restore it afterwards): the digest runs, writes the
+      journal entry, **uploads it to Drive** (visible in the browser), and posts the
+      group summary.
 
-- [ ] Upload a small PDF containing one distinctive nonsense phrase (write a text file
-      with the phrase, export to PDF) into `inbox/` **on the Drive**.
-- [ ] Within one sync cycle the PDF appears in `data/project/inbox/` on the Pi.
-- [ ] DM the bot: *"Find the PDF in my inbox and tell me the exact phrase hidden in
-      it."* → the agent reads the PDF (its file tools extract text) and returns the
-      phrase. *(If the agent's toolset cannot extract PDF text, record that as a
-      deviation with the model/tool names — do not tick.)*
-- [ ] Cleanup: move the PDF to `.archive/` (or delete) and confirm the move propagates.
+## 7. Runtime AGENTS.md reflects v6
+
+- [ ] Ask the bot: *"What is your query map?"* → the answer matches the v6 map
+      (mission → Drive brief; questions → `knowledge_search` then live read; tasks →
+      kanban; who → `member_list`; **no** `search_files`-under-docs, **no** mirror).
+- [ ] If the roster changed since the last render:
+      `uv run python scripts/generate_agents_md.py --db data/hermes/hermes-coord.db`
+      (venv python on the Pi) regenerates deterministically.
+
+## 8. Member lifecycle spot-checks (door-first flow, live)
+
+- [ ] **Door:** pick a REAL new member (or a teammate's unused ID). They send their ID
+      to the owner → owner runs `./scripts/allow.sh <id>` → output names the added ID,
+      shows `docker compose up -d` (never restart), and the container is recreated.
+      Second run with the same ID: no-op.
+- [ ] **Complete row:** the new member DMs *"I'm <name> — <role>, <city>, wake HH:MM"*
+      → the agent calls `member_add` **with their telegram_id from session context**
+      (a complete row — no ID-less adds) and relays the create cronjob call verbatim.
+- [ ] **Duplicate names:** ask the bot to add a member whose name already exists on
+      the active roster → rejected with a summary pointing at `member_update`.
+- [ ] **member_delete (owner-only):** ask the bot to remove a test member → row and
+      check-ins gone, and the check-in cron job removed (`docker compose exec gateway
+      hermes cron list` no longer shows `checkin-<id>`). Non-owner DMs asking for
+      removal are declined and routed to the owner (persona rule 4).
+- [ ] Cleanup: remove any throwaway rows via `member_delete` (never raw SQL) and
+      restore `TELEGRAM_ALLOWED_USERS` in `.env` by hand if a test ID must go (manual,
+      then `docker compose up -d` — allow.sh only appends).
+
+## 9. Doc-extraction check ($GAPI export, non-text rule)
+
+- [ ] Upload a small PDF containing one distinctive nonsense phrase into the Drive
+      `docs/` tree → DM: *"Sync the knowledge base"*, then *"Search the knowledge base
+      for <the PDF's title>"* → found (title/path indexed). DM: *"What does the PDF
+      say?"* → the agent extracts the text via $GAPI **on live read** and returns the
+      phrase. (The cache holds no PDF text — that is the second-pass rule working.)
+- [ ] Cleanup: remove the PDF or move it to the Drive archive.
 
 ## Sign-off
 
-- [ ] All boxes above ticked (no unticked box may remain — including the four step-0
-      pre-flight boxes).
+- [ ] All boxes above ticked (no unticked box may remain — step 1 is the STOP gate).
 - [ ] Date / Pi OS version / Hermes ref: ____________ / ____________ / 29112bef
       (v2026.8.31, Hermes v0.21.0)
-- [ ] Cadence interval chosen for production: ____________ (proposal §3: 15–30 min)
+- [ ] $GAPI verification evidence attached or referenced: ____________
 - [ ] Operator signature: ____________ (chat-signed ____________)
 
 Deviations observed (if any):
 
 - *(none yet)*
 
-> After sign-off: tick the T2.4 box in ROADMAP.md, add the evidence Notes log entry,
-> and commit `chore(T2.4): phase-2 gate signed off`. Phase 2 exit criteria are then met.
+> After sign-off: tick the T2.17 box in ROADMAP.md, add the evidence Notes log entry,
+> and commit `chore(T2.17): phase-2 gate signed off`. Phase 2 exit criteria are then
+> met — and the stranger test (fresh clone, README only, bot boots) should be re-run
+> on a scratch clone before announcing v6.

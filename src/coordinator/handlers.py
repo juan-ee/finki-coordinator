@@ -693,7 +693,14 @@ def knowledge_sync(
 
     fetched_at = clock.now().isoformat()
     for file_id, path, title, modified_time, content in validated:
-        chunks = chunk_markdown(content) if content else [Chunk(heading=None, body="")]
+        # absent / empty / whitespace-only content all store the title/path-only row
+        # (B5 + red-team residual: every ingested FILE leaves a trace and advances
+        # the watermark; only non-blank text is chunked).
+        chunks = (
+            chunk_markdown(content)
+            if content and content.strip()
+            else [Chunk(heading=None, body="")]
+        )
         knowledge.replace_file(
             file_id=file_id,
             path=path,

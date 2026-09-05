@@ -280,3 +280,30 @@ def test_redteam_watermark_is_chronological_across_rfc3339_offset_forms(
     assert stored is not None
     assert stored["modified_time"] == "2026-09-02T04:00:00Z"
     assert result["data"]["watermark"] == "2026-09-02T04:00:00Z"
+
+
+def test_redteam_whitespace_only_content_stores_title_path_row(
+    conn: sqlite3.Connection, knowledge: KnowledgeRepo
+) -> None:
+    """B5 residual (T2.17 adoption review): whitespace-only text still leaves a trace.
+
+    Same shape as B5: a file whose content is only whitespace must store the
+    title/path-only row (searchable) and advance the watermark, not vanish.
+    """
+    files = [
+        {
+            "file_id": "ws",
+            "path": "docs/ws.md",
+            "title": "Whitespace doc",
+            "modified_time": "2026-09-05T00:00:00Z",
+            "content": " \n \t ",
+        }
+    ]
+    result = knowledge_sync({"files": files}, None, None, None, FakeClock(), knowledge)
+
+    assert result["ok"] is True
+    row = conn.execute("SELECT body, title FROM knowledge WHERE file_id = 'ws'").fetchone()
+    assert row is not None and row["body"] == "" and row["title"] == "Whitespace doc"
+    hits = knowledge.search("whitespace", limit=5)
+    assert len(hits) == 1 and hits[0].file_id == "ws"
+    assert result["data"]["watermark"] == "2026-09-05T00:00:00Z"
