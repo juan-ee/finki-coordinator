@@ -447,3 +447,22 @@ def test_raising_last_check_degrades_instead_of_failing_the_read(
     assert [h["file_id"] for h in result["data"]["results"]] == ["old-doc"]
     assert "freshness check FAILED" in result["summary"]
     assert "OperationalError" in result["summary"]
+    assert gate.refresh_calls == []  # a failed READ never attempts a refresh
+
+
+def test_gate_counts_line_fallback_is_anchored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stdout without the 'ingested' report line yields the fixed fallback — nothing
+    unanchored may flow from the script into the LLM-facing summary."""
+
+    def fake_run(argv, **kwargs):  # type: ignore[no-untyped-def]
+        return type("R", (), {"returncode": 0, "stdout": "something unexpected", "stderr": ""})()
+
+    monkeypatch.setattr("coordinator.hermes_plugin.subprocess.run", fake_run)
+    gate = _gate(tmp_path)
+
+    outcome = gate.refresh(NOW.isoformat())
+
+    assert outcome.status == "refreshed"
+    assert outcome.detail == "no report output"
