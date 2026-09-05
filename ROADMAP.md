@@ -421,7 +421,7 @@ Pi/human; the agent only produces/refreshes the verification script.
 > crosses LLM context** (AGENTS.md hard rule 11). Tasks run top-to-bottom in a
 > dedicated session; T2.21 gates the remaining phase-2 boxes on them.
 
-- [ ] **T2.18 `scripts/sync_knowledge.py` — deterministic knowledge sync (D2 rev)** — TDD.
+- [x] **T2.18 `scripts/sync_knowledge.py` — deterministic knowledge sync (D2 rev)** — TDD.
   Pure diff/plan logic in `src/coordinator/syncing.py` (watermark diff, changed-file
   selection — no I/O); I/O adapter in the script: list the knowledge Drive via the
   google-workspace skill CLI (`google_api.py drive search --raw-query`), download
@@ -519,6 +519,38 @@ Pi/human; the agent only produces/refreshes the verification script.
 
 *(agents append here: date, task, deviation/observation)*
 
+- 2026-09-05 T2.18 — review verdict: no hard violations (two fresh axes, fixed point
+  44ae92f; delta re-reviews clean). Fix round arbitrated UP one [JUDGEMENT] flagged
+  independently by both axes: unparseable modifiedTime is now SKIPPED in every mode — a
+  resync storing the raw string would make it the BINARY-MAX watermark and permanently
+  break the no-op second run; the T2.14-era raw-store fallback dies with the legacy
+  handler (T2.20). Judgement calls: (1) _wipe_cache hand-writes the FTS-linkage DELETEs
+  in the script; a KnowledgeRepo.wipe() would single-source the invariant
+  (repositories.py not a named module this task); (2) real rounds print the ACTUAL
+  post-round watermark (repo.watermark()), not the plan projection — a failed download
+  must not overstate the cache; (3) --transport/--gapi-path flags beyond the two spec'd
+  flags — needed for the three run targets (dev uv / Pi-host docker / in-container
+  direct); (4) page-cap (>200 children) and BFS depth-cap (>10) truncations warn on
+  stderr but are not paginateable with the CLI's fixed page size — a >200-children
+  folder needs CLI pagination (out of scope, recorded); (5) sub-second race: an edit
+  landing in the watermark's second after the listing is missed (<1 s window; T2.24
+  Changes-API class); (6) canonical_modified_time's docstring keeps the T2.14 "kept
+  visible in the cache" phrasing — accurate for the function passthrough (legacy
+  handler path until T2.20), not for plan_sync; (7) multi-paragraph docstrings follow
+  repo convention despite rule 6's "one-line" letter; (8) is_text_mime is text/* only —
+  JSON/YAML/etc index title/path-only by design; (9) concurrent syncs get unique mkdtemp
+  workspaces; HERMES_UID misconfiguration fails loudly (SyncError) and stale temp dirs
+  are gitignored. Pi acceptance (found and fixed two real transport bugs): (a) downloads
+  must live in the compose-mounted data dir — the docker-transport CLI writes
+  in-container while the host script reads on the host; the transport now declares its
+  download workspace and maps host paths to /opt/data/workspace (29dd091); (b) CLI
+  stdin detached — exec -T consumed the calling shell's remaining input (1775fda);
+  mapper pinned by unit tests (e1e9a2e). Acceptance evidence: baseline round 19
+  unchanged @ watermark 2026-09-05T09:25:35Z (matches the gate record); Drive upload →
+  round ingested exactly 1 (watermark → 12:41:02Z) → second round NO-OP (20 unchanged,
+  0 ingested) → --dry-run plan-only; Drive trash → --resync purged the deleted file
+  (19 files rebuilt through the plugin chunker, 0 failed) → final round no-op. Cache
+  consistent with Drive; the agent-mediated tool flow untouched (T2.20 removes it).
 - 2026-08-29 T0.1 — review verdict: no hard violations; judgement calls recorded: (1) version
   string lives in both pyproject.toml and src/coordinator/__init__.py and the smoke test
   asserts only str/non-empty (drift would pass) — consider hatch dynamic version or an
