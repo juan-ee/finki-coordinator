@@ -608,6 +608,13 @@ def knowledge_sync(
     } (ingest): validates the WHOLE batch, then chunks + stores each file through
     the repo (absent content = non-text: one title/path-only row). The watermark
     advances implicitly (MAX over rows); no partial ingest on a malformed batch.
+
+    The handler is deliberately more lenient than the model-facing schema (the
+    handlers-wide null-is-absent convention): a JSON null for files counts as
+    absent — a plan call, like the empty payload — and content: null counts as
+    absent (non-text). Same-batch duplicate file_ids are last-wins: only the last
+    entry's rows stay stored for that file_id, while the result reports
+    synced=len(entries) (entries, not unique files).
     """
     del members, checkins, settings  # uniform handler signature; the cache is external
     error = _reject_unknown(payload, _SYNC_FIELDS)

@@ -283,10 +283,13 @@ def test_tool_specs_cover_exactly_the_nine_tools() -> None:
 
 
 def test_schemas_mirror_handler_payload_fields_exactly() -> None:
-    """Schema properties/required match what each handler enforces, types included.
+    """Schema properties/required mirror each handler's accepted payload fields.
 
-    Flat tools compare {key: {"type": type}}; knowledge_sync's "files" array carries a
-    nested item schema, pinned in full below.
+    This pins property names, their JSON types, and the required list, plus the
+    nested files item shape for knowledge_sync — the field-level contract only. It
+    does NOT prove full handler/schema equality: null-as-absent leniency and
+    non-empty-string strictness are handler contract details that properties and
+    required lists cannot express (see the knowledge_sync docstring).
     """
     for tool, (fields, required) in EXPECTED_FIELDS.items():
         schema = TOOL_SPECS[tool]["schema"]
@@ -414,6 +417,29 @@ def test_dispatch_unknown_tool_raises_keyerror() -> None:
             checkins=checkins,
             settings=settings,
             clock=clock,
+        )
+
+
+def test_dispatch_knowledge_sync_without_wired_knowledge_repo_raises_keyerror() -> None:
+    """Dispatching knowledge_sync with knowledge=None raises the wiring-bug KeyError.
+
+    A knowledge tool whose repository was never wired (knowledge=None is legal for
+    the eight repo-free tools) is a wiring bug, not a payload error: the guard
+    refuses loudly instead of letting the handler dereference a None repository.
+    """
+    members, checkins, settings, clock = _wire()
+
+    with pytest.raises(
+        KeyError, match="tool 'knowledge_sync' requires a wired knowledge repository"
+    ):
+        dispatch(
+            "knowledge_sync",
+            {},
+            members=members,
+            checkins=checkins,
+            settings=settings,
+            clock=clock,
+            knowledge=None,
         )
 
 

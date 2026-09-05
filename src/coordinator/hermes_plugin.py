@@ -26,7 +26,7 @@ import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final, Protocol, TypedDict, cast
+from typing import Final, NotRequired, Protocol, TypedDict, cast
 
 from . import db
 from .handlers import (
@@ -86,7 +86,7 @@ class ToolSpec(TypedDict):
     schema: dict[str, object]
     handler: SpecHandler
     toolset: str
-    takes_knowledge: bool
+    takes_knowledge: NotRequired[bool]
 
 
 class HermesContext(Protocol):
