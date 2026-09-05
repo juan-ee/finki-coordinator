@@ -44,10 +44,16 @@ class FakeDrive:
         self.contents = contents
         self.fail = fail_downloads
         self.download_calls: list[str] = []
+        self.workspace: Path | None = None  # the download_workspace() declaration
+        self.seen_output_dirs: list[Path] = []
 
     def list_children(self, folder_id: str | None) -> list[dict[str, object]]:
         """Return the folder's children (folder_id None = the My Drive root)."""
         return self.tree.get(folder_id, [])
+
+    def download_workspace(self) -> Path | None:
+        """Declare where downloads must live (None = system temp is fine)."""
+        return self.workspace
 
     def download(self, file_id: str, output_dir: Path) -> Path:
         """Write the file's bytes to output_dir/<file_id>; raise on injected failures."""
@@ -55,6 +61,7 @@ class FakeDrive:
             # the real transport wraps CLI failures in SyncError — mirror that contract
             raise sync_script.SyncError("gapi drive download failed (exit 1): quota exceeded")
         self.download_calls.append(file_id)
+        self.seen_output_dirs.append(output_dir)
         path = output_dir / file_id
         path.write_bytes(self.contents.get(file_id, b""))
         return path
@@ -316,3 +323,22 @@ def test_parse_args_defaults_and_flags() -> None:
 
     plain = sync_script.parse_args([])
     assert plain.resync is False and plain.dry_run is False
+
+
+def test_downloads_happen_inside_the_transport_declared_workspace(
+    db_path: Path, tmp_path: Path
+) -> None:
+    """Docker-transport contract: the run's download temp dir lives INSIDE the
+    workspace the transport declares (the compose-mounted data dir) — a CLI running
+    in the container and the host script must see the same files."""
+    tree, contents = _tree()
+    transport = FakeDrive(tree, contents)
+    workspace = tmp_path / "declared-workspace"
+    workspace.mkdir()
+    transport.workspace = workspace
+
+    outcome = sync_script.run_sync(db_path, transport, fetched_at="2026-09-06T00:00:00+00:00")
+
+    assert outcome.ingested == 4
+    assert transport.seen_output_dirs, "downloads must have happened"
+    assert all(directory.is_relative_to(workspace) for directory in transport.seen_output_dirs)

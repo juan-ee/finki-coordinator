@@ -90,6 +90,10 @@ class DriveTransport(Protocol):
         """Download the file's bytes into output_dir; return the written path."""
         ...
 
+    def download_workspace(self) -> Path | None:
+        """Host-side directory downloads must live under (None = system temp is fine)."""
+        ...
+
 
 @dataclass
 class SyncOutcome:
@@ -163,11 +167,50 @@ class GapiCliTransport:
             )
         return rows
 
+    def download_workspace(self) -> Path | None:
+        """Host-side dir downloads must live under (docker mode: the mounted data dir).
+
+        In docker mode the CLI runs INSIDE the container while the script reads the
+        file on the host: the download directory must be visible to both, and the
+        template's only host<->container shared filesystem is the compose mount
+        ./data -> /opt/data/workspace (docker-compose.yml). Direct mode shares the
+        filesystem, so the system temp dir is fine (None).
+        """
+        if self._mode == "docker":
+            workspace = self._compose_dir / "data"
+            workspace.mkdir(exist_ok=True)
+            return workspace
+        return None
+
     def download(self, file_id: str, output_dir: Path) -> Path:
         """Download one file into output_dir/<file_id> (id as name: no path surprises)."""
         dest = output_dir / file_id
-        self._run(["drive", "download", file_id, "--output", str(dest)])
+        cli_dest = dest
+        if self._mode == "docker":
+            cli_dest = container_download_path(self._compose_dir, dest)
+        self._run(["drive", "download", file_id, "--output", str(cli_dest)])
         return dest
+
+
+_CONTAINER_WORKSPACE = Path("/opt/data/workspace")
+"""The container side of the compose mount ./data:/opt/data/workspace."""
+
+
+def container_download_path(compose_dir: Path, host_dest: Path) -> Path:
+    """Map a host download path into the container's view of the mounted workspace.
+
+    host_dest must live under <compose_dir>/data (the host side of the mount);
+    anything else is a programming error — the container could never deliver the
+    file to the host there.
+    """
+    try:
+        relative = host_dest.resolve().relative_to((compose_dir / "data").resolve())
+    except ValueError as exc:
+        raise SyncError(
+            f"download path {host_dest} is not under {compose_dir / 'data'}:"
+            " the docker transport can only deliver into the mounted data dir"
+        ) from exc
+    return _CONTAINER_WORKSPACE / relative
 
 
 def _repo_root() -> Path:
@@ -283,7 +326,11 @@ def run_sync(
             _wipe_cache(conn)
         failed: list[str] = []
         ingested = 0
-        with tempfile.TemporaryDirectory(prefix="sync-knowledge-") as tmp:
+        with tempfile.TemporaryDirectory(
+            prefix="sync-knowledge-",
+            dir=transport.download_workspace(),
+            ignore_cleanup_errors=True,
+        ) as tmp:
             output_dir = Path(tmp)
             for candidate in plan.downloads:
                 try:
