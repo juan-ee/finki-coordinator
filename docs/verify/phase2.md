@@ -1,20 +1,9 @@
-# Phase 2 verification — member lifecycle & knowledge on the Pi (MANUAL GATE, v6)
+# Phase 2 verification — member lifecycle & knowledge on the Pi (MANUAL GATE, v6.1)
 
 > **Human-only.** A coding agent cannot run this gate: it needs the Raspberry Pi, the
 > live Hermes container, the agent's google-workspace skill (`$GAPI`) against the real
 > Drive, and a human editing Drive in a browser. Work top to bottom; tick each `[ ]`
 > as it passes; do not skip failures.
->
-> **v6.1 resumption note (2026-09-05, mid-gate design change):** this gate sanctioned
-> making knowledge sync deterministic — `scripts/sync_knowledge.py` (hermes cron +
-> `make sync`) replaces the agent-mediated two-call `knowledge_sync` tool, which was
-> caught inventing file contents and stalling batching during step 2 below. Spec:
-> proposal §11 (D2 rev) + ROADMAP T2.18–T2.22 (AGENTS.md hard rule 11). Effects when
-> those tasks land: pre-flight tool count 10 → 9 (no `knowledge_sync` tool); step 2's
-> round-trip + no-op are re-verified against the script (the 2026-09-05 agent-run
-> evidence below stays as the incident record); step 3 unchanged (read path);
-> steps 5–9 as written. **Do not tick remaining knowledge boxes until T2.18–T2.20
-> ship.**
 >
 > **STOP CONDITION (read before anything else):** step 1 verifies `$GAPI` works
 > in-container at our pinned `HERMES_REF`. If it does **not**, the phase **stops
@@ -22,13 +11,16 @@
 > **No workarounds exist by design** — no rclone, no service accounts, no dependency
 > installs. The whole v6 knowledge loop rides on this one skill.
 
-**What phase 2 shipped** (the thing being verified, T2.5–T2.16): door-first onboarding
-(`scripts/allow.sh`, `member_add` with required `telegram_id`, owner-only
-`member_delete`), seed hygiene, the dead-weight cut (`status_days`, `digest_time`,
-compose Drive env, `sync.sh`), the knowledge subsystem (v6 schema +
-`knowledge_sync`/`knowledge_search` on an FTS5 cache), the digest uploading instead of
-syncing, and the persona/skills v6 guidance. Deliberately NOT in this gate: backups
-(phase 4) and vector RAG (phase 5, forbidden until the team decides).
+**What phase 2 shipped** (the thing being verified, T2.5–T2.16 plus the v6.1 follow-ups
+T2.18–T2.23): door-first onboarding (`scripts/allow.sh`, `member_add` with required
+`telegram_id`, owner-only `member_delete`), seed hygiene, the dead-weight cut
+(`status_days`, `digest_time`, compose Drive env, `sync.sh`), the knowledge subsystem
+(v6 schema; `knowledge_search` on an FTS5 cache refreshed by the deterministic
+`scripts/sync_knowledge.py` — hermes cron + `make sync`, no LLM in the data path,
+AGENTS.md hard rule 11 — plus the read-through freshness gate on search, T2.23), the
+digest uploading instead of syncing, and the persona/skills guidance. Deliberately NOT
+in this gate: backups (phase 4) and vector RAG (phase 5, forbidden until the team
+decides).
 
 ## Pre-flight
 
@@ -51,7 +43,14 @@ syncing, and the persona/skills v6 guidance. Deliberately NOT in this gate: back
       **✓ 2026-09-05:** bot DM listed exactly the 10 (member_list/add/update/delete,
       checkin_submit, checkins_by_date, knowledge_sync, knowledge_search,
       setting_get/set) — matches the static TOOL_SPECS registry; `hermes plugins
-      list` shows `coordinator` enabled (source: user).
+      list` shows `coordinator` enabled (source: user). *(v6 evidence — superseded by
+      the v6.1 re-check below.)*
+- [ ] **v6.1 re-check (after T2.18–T2.23):** the container carries the 9-tool plugin —
+      `git pull` + `docker compose up -d` first (bind mounts apply only at container
+      creation), then ask the bot in a DM to list its coordinator tools → exactly
+      **9** (`member_add`, `member_update`, `member_list`, `member_delete`,
+      `checkin_submit`, `checkins_by_date`, `knowledge_search`, `setting_get`,
+      `setting_set`) and **no `knowledge_sync`**. Record: ____________.
 
 ## 1. $GAPI works in-container — THE FIRST ITEM (STOP if it fails)
 
@@ -119,7 +118,12 @@ syncing, and the persona/skills v6 guidance. Deliberately NOT in this gate: back
 Report to the owner. Do NOT attempt rclone, service accounts, manual OAuth, or any
 other fallback — the v6 design has none on purpose (proposal §6.9).
 
-## 2. knowledge_sync round-trip — DOWN (Drive → cache)
+## 2. Knowledge sync round-trip — DOWN (Drive → cache) — v6.1: the deterministic script
+
+The cache is refreshed by `scripts/sync_knowledge.py` — host: `make sync`; in-container
+one-shot: `python3 /opt/data/scripts/sync_knowledge.py` — never by the agent
+(AGENTS.md hard rule 11). The agent-mediated run below is kept as the incident record
+that motivated the switch (proposal §11).
 
 - [x] **Test data first (Drive web UI):** in the Drive root create/upload 2 small
       markdown docs — `docs/notes/decisión.md` containing the word **decisión** and a
@@ -133,9 +137,10 @@ other fallback — the v6 design has none on purpose (proposal §6.9).
       phrase recorded: **"el quokka baila tangos los martes"**. Second distinctive
       phrase: **"be happy everyday"** (in `notes/decision.md`, owner-created). Both
       verified via `drive search`/download in-container.
-- [ ] DM: *"Sync the knowledge base."* → the agent runs the plan call (watermark),
-      lists/selects/downloads via $GAPI, then ingests. The tool result reports
-      `synced: N` (N ≥ 2) and a watermark value. Record: ____________.
+- [x] **Incident record — v6 agent-mediated run (superseded by the script below, kept
+      as evidence):** the box was to DM *"Sync the knowledge base"* → the agent runs
+      the plan call (watermark), lists/selects/downloads via $GAPI, then ingests; the
+      tool result reports `synced: N` (N ≥ 2) and a watermark value.
       **◐ 2026-09-05 — sync executed; end state VERIFIED server-side; incident
       recorded:** the agent downloaded 19 files, made one mid-run mistake (passed
       invented placeholder summaries — cache poisoning attempt), CAUGHT ITSELF, and
@@ -157,11 +162,21 @@ other fallback — the v6 design has none on purpose (proposal §6.9).
       hits are false positives: the Spanish customs term "ad-valorem" in
       Estudio_Mercado_Limpieza_Laser_Ecuador.md). Bot disclosed the placeholder
       incident unprompted; PDF + Logo correctly title/path-only.
-- [ ] **Second sync is a no-op:** DM *"Sync the knowledge base"* again → the agent
-      lists, finds nothing past the watermark, and reports nothing new ingested
-      (no duplicate storage).
+- [ ] **First script round (real, ingests):** upload a fresh small markdown doc (or
+      append a line to an existing one) in the Drive web UI, then on the Pi host run
+      `make sync` → exit 0; the report ingests exactly the changed file(s) and prints
+      the post-round watermark. Record: ____________.
+- [ ] **Second script round is a no-op:** `make sync` again with no Drive-side changes
+      → 0 ingested (every file unchanged), exit 0, watermark unchanged. Record:
+      ____________.
 
 ## 3. knowledge_search — diacritics + live confirmation (READ)
+
+> v6.1 read path (T2.23): a search whose last freshness check is older than
+> `knowledge.freshness_ttl_minutes` (config knob, default 10) runs a quick incremental
+> script sync first and says so in the result summary; searches inside the TTL are
+> served straight from the cache. Degraded mode: Drive unreachable → the cache is
+> served and the summary says so — reading never hard-fails.
 
 - [ ] DM: *"Search the knowledge base for decision."* → the hit list includes the
       `decisión.md` document (accent-insensitive MATCH on real data).
@@ -188,19 +203,24 @@ docker compose exec gateway python3 -c "import sqlite3; c = sqlite3.connect('/op
 
 - [ ] DM: *"Write a short journal note for today and make sure it reaches Drive."* →
       the agent writes `journal/YYYY-MM-DD.md` locally and uploads it via
-      `$GAPI drive upload`. Verify in the **Drive web UI**: the file exists with
-      today's content. Record the Drive path: ____________.
+      `$GAPI drive upload`, then runs the sync one-shot (mandatory write-through:
+      `python3 /opt/data/scripts/sync_knowledge.py` — the transcript must show the
+      counts line). Verify in the **Drive web UI**: the file exists with today's
+      content, and a DM search finds it immediately. Record the Drive path:
+      ____________.
 - [ ] **DOWN proof of the round trip:** in the Drive web UI, append a line containing
-      a third distinctive phrase (record: ____________) to the uploaded note → DM
-      *"Sync the knowledge base"* → DM *"Search the knowledge base for ____________"*
-      → the agent finds it and confirms against the live file.
+      a third distinctive phrase (record: ____________) to the uploaded note → run
+      `make sync` on the Pi host → DM *"Search the knowledge base for ____________"*
+      → the agent finds it and confirms against the live file. (Equivalently: wait out
+      the freshness TTL and search — the read gate refreshes first, T2.23.)
 
 ## 6. Digest end-to-end
 
 - [ ] At the digest time (or after conversationally creating/adjusting a test digest
       job for a near time — restore it afterwards): the digest runs, writes the
-      journal entry, **uploads it to Drive** (visible in the browser), and posts the
-      group summary.
+      journal entry, **uploads it to Drive** (visible in the browser) and runs the
+      write-through sync, and posts the group summary. An upload failure is reported
+      in one line at the end of the journal entry — drift must be visible, not silent.
 
 ## 7. Runtime AGENTS.md reflects v6
 
@@ -233,10 +253,10 @@ docker compose exec gateway python3 -c "import sqlite3; c = sqlite3.connect('/op
 ## 9. Doc-extraction check ($GAPI export, non-text rule)
 
 - [ ] Upload a small PDF containing one distinctive nonsense phrase into the Drive
-      `docs/` tree → DM: *"Sync the knowledge base"*, then *"Search the knowledge base
-      for <the PDF's title>"* → found (title/path indexed). DM: *"What does the PDF
-      say?"* → the agent extracts the text via $GAPI **on live read** and returns the
-      phrase. (The cache holds no PDF text — that is the second-pass rule working.)
+      `docs/` tree → run `make sync` on the Pi host, then DM *"Search the knowledge
+      base for <the PDF's title>"* → found (title/path indexed). DM: *"What does the
+      PDF say?"* → the agent extracts the text via $GAPI **on live read** and returns
+      the phrase. (The cache holds no PDF text — that is the second-pass rule working.)
 - [ ] Cleanup: remove the PDF or move it to the Drive archive.
 
 ## Sign-off
@@ -248,6 +268,14 @@ docker compose exec gateway python3 -c "import sqlite3; c = sqlite3.connect('/op
 - [ ] Operator signature: ____________ (chat-signed ____________)
 
 Deviations observed (if any):
+
+- 2026-09-05 (T2.21 doc refresh): the gate re-based on the v6.1 deterministic sync —
+  pre-flight gains the 9-tool re-check; step 2's round-trip/no-op are re-verified
+  against `make sync` (the agent-mediated run above stays as the incident record);
+  steps 3/5/6/9 updated for the script, the T2.23 read-through freshness gate, and the
+  mandatory post-upload write-through. The drive_root wiring follow-up carries over:
+  the script lists the token account's own Drive root; `project.drive_root` remains
+  parsed-but-unused (schema description updated by T2.20).
 
 - 2026-09-05: **DRIVE SCOPING GAP (decision: dedicated bot account — in progress):**
   (a) OAuth was completed with the owner's PERSONAL Google account, so $GAPI can
@@ -283,12 +311,13 @@ Deviations observed (if any):
   runtime config; the template ships only `config.example.yaml` and does not
   gitignore the real one). Proposed post-gate template fix: add
   `config/config.yaml` to `.gitignore`. (Also affects the stranger test.)
+  *(Resolved by T2.22 — the line is gitignored.)*
 - 2026-09-05: runtime `data/project/AGENTS.md` was stale v5 (`search_files` under
   docs/, rclone bisync mirror wording). Regenerated during validation via
   `uv run python scripts/generate_agents_md.py --db data/hermes/hermes-coord.db`
   → v6 map confirmed in the file (bot re-ask still pending, step 7).
 - 2026-09-05: in-container SQLite is 3.53.4; step-4's "pinned 3.50.4" note is
-  stale (rank-form check unaffected).
+  stale (rank-form check unaffected). *(Fixed by T2.22 — step 4 now stands on both.)*
 - 2026-09-05: `.env` carried 6 dead v5 `GOOGLE_DRIVE_*`/`RCLONE_*` lines; removed
   (backup `.env.bak-20260905-095236`) — see pre-flight box 3 evidence.
 - 2026-09-05: roster legacy rows Jose/Luis/David have `telegram_id: null` (pre-v6;
@@ -296,7 +325,7 @@ Deviations observed (if any):
 - 2026-09-05: no digest cron job exists yet (`hermes cron list` shows only
   `checkin-1`) — step 6 will use the conversational test job, per the doc.
 
-> After sign-off: tick the T2.17 box in ROADMAP.md, add the evidence Notes log entry,
-> and commit `chore(T2.17): phase-2 gate signed off`. Phase 2 exit criteria are then
-> met — and the stranger test (fresh clone, README only, bot boots) should be re-run
-> on a scratch clone before announcing v6.
+> After sign-off: tick the **T2.17 and T2.21** boxes in ROADMAP.md, add the evidence
+> Notes log entry, and commit `chore(T2.17): phase-2 gate signed off (v6.1)`. Phase 2
+> exit criteria are then met — and the stranger test (fresh clone, README only, bot
+> boots) should be re-run on a scratch clone before announcing v6.

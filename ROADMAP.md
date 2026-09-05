@@ -452,6 +452,9 @@ Pi/human; the agent only produces/refreshes the verification script.
   pre-flight (9 tools; no `knowledge_sync`), re-verify step 2 (script round-trip +
   no-op) and step 3 (search diacritics on real data) against the script, remove the
   v6.1 resumption note, then run the remaining boxes (5–9) fresh.
+  *(DOC refresh done 2026-09-05 — the gate doc is re-based on the deterministic script;
+  the fresh gate run (pre-flight re-check, steps 2/3, boxes 5–9) awaits the operator on
+  the Pi; the box ticks at sign-off together with T2.17.)*
 - [x] **T2.22 `DOC`/`chore` — small template fixes logged during the gate** — gitignore
   `config/config.yaml` (any deployment leaves the tree clean); fix the gate's stale
   SQLite-version note (in-container 3.53.4, not 3.50.4). Acceptance: fresh-clone
@@ -519,6 +522,18 @@ Pi/human; the agent only produces/refreshes the verification script.
 
 *(agents append here: date, task, deviation/observation)*
 
+- 2026-09-05 T2.21 — DOC part done (gate-run part pending on the Pi; box stays unticked
+  per the T2.17 MANUAL-GATE pattern). docs/verify/phase2.md re-based on the v6.1 world:
+  resumption note removed (its promised effects applied inline); "what shipped" covers
+  T2.18–T2.23; pre-flight gains the 9-tool re-check (git pull + up -d first — bind
+  mounts apply only at container creation); step 2 retitled for the deterministic
+  script with two new boxes (first round ingests / second round no-op) and the
+  agent-mediated run kept as the labeled incident record; step 3 documents the T2.23
+  read path (TTL refresh + degraded mode); steps 5/6/9 carry the mandatory
+  write-through and the script-based DOWN proof; two T2.22-resolved deviations
+  annotated; closing note ticks T2.17 + T2.21 at sign-off; drive_root wiring follow-up
+  restated against the script. Docs-only — no tests touched. Remaining: the fresh gate
+  run with the operator (pre-flight re-check, steps 2/3 re-verification, boxes 5–9).
 - 2026-09-05 T2.16 — DOC task executed directly (commit 7312709); the checkbox stayed
   unticked because the v6.1 mid-gate re-queue landed hours later and gated the remaining
   phase-2 boxes on T2.18–T2.20 (which have since shipped). Close-out re-verified the
