@@ -309,9 +309,10 @@ Deviations observed (if any):
   (design-forbidden; the phase-1 gate removed a bot-authored skill of this class) and
   a `cronjob action: update` quirk that contradicts our name-based `edit` relay
   (phase-1 upstream evaluation verified name-based edit at this pin — likely a wrong
-  verb in the skill). (c) `~/.hermes/kb_sync/` holds stale staging (`batch_*.json`)
-  from the retired agent-mediated sync — not a v6.1 artifact; the CONSOLIDADO edit is
-  NOT in it, so quoting from it serves pre-edit text. (d) Our repo skills
+  verb in the skill). (c) `~/.hermes/kb_sync/` holds stale staging from the retired
+  agent-mediated sync (`batch_*.json` + the two test notes) — not a v6.1 artifact;
+  the CONSOLIDADO doc is absent entirely, so quoting from kb_sync "works" only where
+  a stale copy happens to exist. (d) Our repo skills
   (`prompts/skills/*`) are not installed into the runtime skill store at all — the
   template never had an install step; the runtime made up its own.
   **Fix bundle (owner-approved, agent-run):** re-run `scripts/setup.sh` (re-installs
