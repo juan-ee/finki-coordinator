@@ -11,6 +11,11 @@ class Chunk:
     body: str
 
 
+def _fence_run(line: str, char: str) -> int:
+    """Return the length of line's leading run of char (0 when line does not start with it)."""
+    return len(line) - len(line.lstrip(char))
+
+
 def chunk_markdown(body: str) -> list[Chunk]:
     """Split markdown into one chunk per '## ' section; '###' stays inside its section.
 
@@ -21,20 +26,35 @@ def chunk_markdown(body: str) -> list[Chunk]:
     its literal name, and a taken heading (literal or already suffixed) gets the first
     free occurrence suffix ("Notes", "Notes (2)", "Notes (3)", or "Notes (2) (2)" when
     a literal "Notes (2)" arrives after a generated one). Bodies are stripped at the edges.
-    '## ' lines inside a ``` / ~~~ code fence are body text, not headings: a fence
-    line (leading ``` or ~~~, trailing text allowed) toggles fence state, and an
-    unclosed fence suppresses splits to the end of the document.
+    Lines are CommonMark lines only: CRLF and lone CR are normalized to LF and the
+    split is on LF exclusively - U+2028/U+2029/NEL/VT/FF are mid-line content, never
+    line endings, so a '## ' after one does not start a section. '## ' lines inside a
+    fenced code block are body text, not headings: a fence opens on a line starting
+    with three or more backticks or tildes (trailing text allowed - the info string)
+    and closes only on a line starting with at least as many of the SAME character as
+    the opening run, so a tilde line never closes a backtick fence and a three-backtick
+    line never closes a four-backtick one; an unclosed fence suppresses splits to the
+    end of the document.
     """
     if body.strip() == "":
         return []
 
     headings: list[str | None] = []
     regions: list[list[str]] = []
-    in_fence = False
-    for line in body.splitlines():
-        if line.startswith(("```", "~~~")):
-            in_fence = not in_fence  # the fence line itself stays in the body
-        if not in_fence and line.startswith("## "):
+    fence_char: str | None = None  # the open fence's character: "`" or "~"
+    fence_run = 0  # the open fence's opening run length
+    lines = body.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    for line in lines:
+        if fence_char is None:
+            for char in ("`", "~"):
+                run = _fence_run(line, char)
+                if run >= 3:
+                    fence_char = char
+                    fence_run = run
+                    break
+        elif _fence_run(line, fence_char) >= fence_run:
+            fence_char = None  # same character, at least as long: closes the fence
+        if fence_char is None and line.startswith("## "):
             headings.append(line[3:].strip())
             regions.append([])
             continue

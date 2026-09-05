@@ -412,7 +412,13 @@ class KnowledgeRepo:
         fetched_at: str,
         chunks: list[Chunk],
     ) -> int:
-        """Rewrite one file's cache rows and FTS entries; return the chunk count."""
+        """Rewrite one file's cache rows and FTS entries; return the chunk count.
+
+        Any failure - not only sqlite3.Error, e.g. an unencodable value that fails at
+        bind time - rolls the transaction back and re-raises (db.migrate's discipline),
+        so a failed reindex leaves both tables untouched instead of leaving its deletes
+        pending for the next commit on the shared connection to poison.
+        """
         with WRITE_TRANSACTION_LOCK:
             try:
                 self._conn.execute(
@@ -440,7 +446,11 @@ class KnowledgeRepo:
                         (cursor.lastrowid, title, chunk.body),
                     )
                 self._conn.commit()
-            except sqlite3.Error:
+            except BaseException:
+                # Not only sqlite3.Error: a non-sqlite failure (e.g. UnicodeEncodeError
+                # binding a lone surrogate) must roll back too, or the FTS-delete +
+                # row-delete stay pending in an open transaction and the NEXT commit on
+                # the shared connection silently drops a previously indexed file.
                 self._conn.rollback()
                 raise
         return len(chunks)

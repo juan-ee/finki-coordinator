@@ -13,7 +13,7 @@ the actionable one-line summary in "summary" and empty "data".
 """
 
 import re
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Protocol, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -56,7 +56,8 @@ _SYNC_FIELDS = frozenset({"files"})
 _SEARCH_FIELDS = frozenset({"query", "limit"})
 
 # One knowledge_sync ingest entry: four required strings + optional text content
-# (absent/None = non-text file — title/path-only row, audit second-pass rule).
+# (absent/None = non-text file, "" = empty text file: one title/path-only row either
+# way, audit second-pass rule; only non-empty text content is chunked).
 _FILE_REQUIRED_FIELDS = ("file_id", "path", "title", "modified_time")
 
 
@@ -594,6 +595,25 @@ def _setting_value_error(key: str, value: str) -> str | None:
     return None
 
 
+def _canonical_modified_time(value: str) -> str:
+    """Normalize an RFC3339 modified_time to canonical UTC 'YYYY-MM-DDTHH:MM:SSZ'.
+
+    A trailing Z is read as +00:00, an explicit offset is converted to UTC, and a
+    timestamp without an offset is treated as UTC (the repo is UTC-anchored, and
+    naive astimezone() would smuggle in the host's locale). An unparseable value is
+    returned unchanged - the documented fallback that keeps bad Drive metadata
+    visible in the cache instead of silently rewriting it.
+    """
+    candidate = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(candidate)
+    except ValueError:
+        return value
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC).isoformat(timespec="seconds")[:-6] + "Z"
+
+
 def knowledge_sync(
     payload: dict[str, object],
     members: MembersRepository,
@@ -608,8 +628,13 @@ def knowledge_sync(
     order; the agent lists the Drive root, selects files with modifiedTime past the
     watermark, downloads those, and calls again with them. Call 2 - {files: [...]
     } (ingest): validates the WHOLE batch, then chunks + stores each file through
-    the repo (absent content = non-text: one title/path-only row). The watermark
-    advances implicitly (MAX over rows); no partial ingest on a malformed batch.
+    the repo (absent content = non-text file, or empty text content: one
+    title/path-only row either way; only non-empty text content is chunked). Each
+    modified_time is normalized at ingest to canonical UTC
+    'YYYY-MM-DDTHH:MM:SSZ' (a trailing Z is read as +00:00; an unparseable value
+    is stored unchanged), so the watermark - MAX over the stored rows - ranks
+    chronologically, never lexicographically across mixed offset forms; no partial
+    ingest on a malformed batch.
 
     The handler is deliberately more lenient than the model-facing schema (the
     handlers-wide null-is-absent convention): a JSON null for files counts as
@@ -668,12 +693,12 @@ def knowledge_sync(
 
     fetched_at = clock.now().isoformat()
     for file_id, path, title, modified_time, content in validated:
-        chunks = chunk_markdown(content) if content is not None else [Chunk(heading=None, body="")]
+        chunks = chunk_markdown(content) if content else [Chunk(heading=None, body="")]
         knowledge.replace_file(
             file_id=file_id,
             path=path,
             title=title,
-            modified_time=modified_time,
+            modified_time=_canonical_modified_time(modified_time),
             fetched_at=fetched_at,
             chunks=chunks,
         )
@@ -696,7 +721,10 @@ def knowledge_search(
     Returns the top chunks (file_id/path/title/heading) ordered by bm25 with the
     title weighted 10:1 over the body; the agent confirms against the LIVE Drive
     original (via $GAPI) before quoting. limit defaults to 3 and is capped at 10.
-    A malformed query surfaces as ok:False, never as a raw sqlite error.
+    A query containing a C0 control character (NUL, tab, newline, ...) is rejected
+    up front with ok:False: FTS5 MATCH silently truncates at an embedded NUL, so
+    'alpha\\x00nomatchxyz' would match on plain 'alpha'. A malformed query surfaces
+    as ok:False, never as a raw sqlite error.
     """
     del members, checkins, settings  # uniform handler signature; the cache is external
     error = _reject_unknown(payload, _SEARCH_FIELDS) or _require_str(payload, "query")
@@ -709,6 +737,15 @@ def knowledge_search(
         return _fail("field 'limit' must be >= 1")
     query = cast("str", payload["query"])
     effective = 3 if limit is None else min(limit, 10)
+    # B2 guard: FTS5 MATCH silently truncates at an embedded NUL (C-string semantics),
+    # so 'alpha\x00nomatchxyz' would return hits for plain 'alpha' - reject every C0
+    # control character (< 0x20) before the query ever reaches the repo.
+    control = next((ch for ch in query if ord(ch) < 0x20), None)
+    if control is not None:
+        return _fail(
+            f"search failed: query contains control character U+{ord(control):04X}"
+            " - plain words work best (the query is an FTS5 MATCH)"
+        )
     try:
         hits = knowledge.search(query, effective)
     except KnowledgeSearchError as exc:
