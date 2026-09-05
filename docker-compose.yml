@@ -33,6 +33,10 @@ services:
       # files are uploaded to Drive via $GAPI, not mirrored). Gitignored — never
       # commit; compose config stays valid while data/ does not exist yet.
       - ./data:/opt/data/workspace
+      # The deterministic knowledge-sync script (T2.19), mounted read-only at the
+      # ~/.hermes/scripts/ path hermes cron's --script mode requires — the nightly
+      # knowledge-sync job runs it with --no-agent (no LLM in the data path, rule 11).
+      - ./scripts/sync_knowledge.py:/opt/data/scripts/sync_knowledge.py:ro
     environment:
       # Timezone law (AGENTS.md #4): the whole container is anchored to UTC —
       # Hermes computes every cron schedule in this single zone; per-member

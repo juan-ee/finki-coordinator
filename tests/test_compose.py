@@ -87,6 +87,25 @@ def test_environment_keys_match_the_passthrough_contract() -> None:
     )
 
 
+def test_sync_script_is_mounted_for_the_nightly_cron_job() -> None:
+    """T2.19: scripts/sync_knowledge.py is mounted read-only at ~/.hermes/scripts/
+    (in-container /opt/data/scripts/) — the path hermes cron's --script mode requires,
+    so the nightly knowledge-sync job can run it with no LLM in the loop."""
+    proc = _render_config()
+
+    assert proc.returncode == 0, f"compose config failed:\n{proc.stderr}"
+    config = yaml.safe_load(proc.stdout)
+    volumes = config["services"]["gateway"]["volumes"] or []
+    mounts = [
+        v
+        for v in volumes
+        if str(v.get("target", "")) == "/opt/data/scripts/sync_knowledge.py"
+        and v.get("read_only") is True
+        and str(v.get("source", "")).endswith("/scripts/sync_knowledge.py")
+    ]
+    assert mounts, f"sync script mount missing; rendered volumes: {volumes}"
+
+
 def test_hermes_ref_appears_in_rendered_config() -> None:
     """The docker/HERMES_REF pin appears verbatim in the rendered config output."""
     ref = HERMES_REF_FILE.read_text(encoding="utf-8").strip()

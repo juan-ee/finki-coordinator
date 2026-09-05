@@ -513,6 +513,13 @@ anyway for daily use; boot reuses nothing new.
     add the bot as **group admin** (docs: admin bots see all messages without touching
     BotFather privacy mode) and tell it in the group *"digest goes here"* — the job's
     delivery target is edited, no restart.
+11. Nightly knowledge sync (v6.1, T2.19): create the `hermes cron` job that runs the
+    deterministic sync script with **no LLM in the loop** (hard rule 11) — operator path
+    is conversational ("create a nightly job named `knowledge-sync` that runs
+    `python3 /opt/data/scripts/sync_knowledge.py`"); the deterministic CLI equivalent:
+    `docker compose exec -T gateway hermes cron create '30 3 * * *' --name
+    knowledge-sync --script sync_knowledge.py --no-agent`. `hermes cron list` shows it.
+    On demand, `make sync` (or the in-container script) runs one round anytime.
 
 Everything from step 10 onward is conversation. No SSH after boot day except upgrades.
 
