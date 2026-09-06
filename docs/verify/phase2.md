@@ -374,23 +374,38 @@ Deviations observed (if any):
   digest/knowledge skills describe) — then appended a fabricated diagnosis: "hay un
   bug conocido del cache: knowledge_search solo indexa el workspace local, no Drive —
   el script sync_knowledge.py no existe (ese cron falla). Dijiste que lo estabas
-  arreglando por fuera." Verified false on all three claims (agent-run, read-only):
-  (a) `/opt/data/scripts/sync_knowledge.py` EXISTS (19,071 bytes = the repo file);
-  (b) the `knowledge-sync` cron is ACTIVE in no-agent mode, last run
+  arreglando por fuera." Verified false on the falsifiable claims (agent-run,
+  read-only): (a) `/opt/data/scripts/sync_knowledge.py` EXISTS (19,071 bytes = the
+  repo file); (b) the `knowledge-sync` cron is ACTIVE in no-agent mode, last run
   `2026-09-06T03:30:14Z → ok`, next `2026-09-07T03:30` (`hermes cron list`, runtime
-  user); (c) no operator statement about fixing it "por fuera" exists on record —
-  the attribution is invented. The claim also contradicts the bot's own point 2 AND
-  the loaded coordinator-knowledge skill ("the cache is refreshed by the script").
+  user); the job's entire output history is three runs — 2026-09-05 13:00:55 FAILED
+  ("Script not found", the T2.19 incident closed at 13:02:52 when the container was
+  recreated with the mount), 13:02:52 SUCCESS ("19 unchanged, watermark
+  2026-09-05T09:25:35Z"), 2026-09-06 03:30:14 ok. [CORRECTED same day, on
+  operator-provided context: the "lo estabas arreglando por fuera" attribution is
+  NOT invented — it is the bot's real memory of that earlier session's closing
+  agreement ("this issue is registered already in the roadmap"), a true statement
+  about the roadmap's hardening tasks that the bot re-read in the later session as
+  "the operator is fixing the sync externally": faithful memory riding a poisoned
+  premise.] Additional forensics: the episode-1 disinformation prompt cited BOTH
+  2026-09-05 cron logs as failures — but the 13:02:52 log it cited is the
+  SUCCESSFUL recovery run; the bot misread even the evidence it quoted. The claim
+  also contradicts the bot's own point 2 AND the loaded coordinator-knowledge skill
+  ("the cache is refreshed by the script"). Operator note from the same fragment:
+  the challenge "verifica qué hace realmente la búsqueda antes de responderte, en
+  vez de adivinar" DID flip the bot to live verification on camera (the T2.23 read
+  gate fired, the phrase was found, confirmed against live Drive) — verify-live
+  instruction is the lever that works.
   **Verdict:** the T2.25 structural fix is confirmed working for the WORKFLOW-guidance
   class (points 1-2 would have been disk-diving + kb_sync folklore pre-install) and
   the skills-ask acceptance evidence stands; but the confabulated-diagnosis class —
-  asserting "known bugs" from stale T2.19-era evidence ("Script not found", resolved
-  2026-09-06 03:30) and laundering them through invented operator attributions — is
-  NOT solved by installed skills and must not be treated as a T2.25 failure. Operator
-  guidance for this episode: do not act on point 3; the digest (17:00 or the
-  conversational test job) is the designed path for today's check-in to reach Drive.
-  Owner call pending whether this class warrants a task (prompt-level "verify live
-  state before asserting failures" hardening); recorded, not actioned.
+  asserting "known bugs" from stale T2.19-era evidence, misreading its own cited
+  logs, and re-playing a poisoned premise as current state — is NOT solved by
+  installed skills and must not be treated as a T2.25 failure. Operator guidance
+  for this episode: do not act on point 3; the digest (17:00 or the conversational
+  test job) is the designed path for today's check-in to reach Drive. Owner call
+  pending whether this class warrants a task (prompt-level "verify live state
+  before asserting failures" hardening); recorded, not actioned.
 - 2026-09-06 (post-gate DM episode): asked to "write a prompt for another AI to fix
   the source", the bot produced DISINFORMATION — claimed knowledge_search "indexes
   the wrong folder and returns 0 results for real team content" (false: 'cooperativas'
