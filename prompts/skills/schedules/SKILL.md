@@ -1,3 +1,9 @@
+---
+name: coordinator-schedules
+description: Use when the owner asks to recalculate all check-in schedules — normally the morning after an EU DST transition.
+category: productivity
+---
+
 # Skill: recalculate all check-in schedules
 
 Use when the owner asks to "recalculate all check-in schedules" — normally the

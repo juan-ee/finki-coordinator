@@ -9,15 +9,19 @@
 # Usage: scripts/setup.sh [--dry-run]
 #
 # Steps:
-#   1/6 check required env keys (TELEGRAM_BOT_TOKEN, OPENROUTER_API_KEY)
-#   2/6 validate config/config.yaml via 'python -m coordinator.config validate'
-#   3/6 install prompts/persona.md -> ${HERMES_HOME:-$HOME/.hermes}/SOUL.md
-#   4/6 apply Hermes config: model + cron.model pin + timezone UTC ('hermes config set',
+#   1/7 check required env keys (TELEGRAM_BOT_TOKEN, OPENROUTER_API_KEY)
+#   2/7 validate config/config.yaml via 'python -m coordinator.config validate'
+#   3/7 install prompts/persona.md -> ${HERMES_HOME:-$HOME/.hermes}/SOUL.md
+#   4/7 install prompts/skills/*/SKILL.md -> ${HERMES_HOME:-$HOME/.hermes}/skills/
+#       coordinator-<name>/SKILL.md (template-owned: overwrites on every run, same
+#       precedent as the SOUL.md install; no rebuild/restart needed — the runtime
+#       skill store lives on the ~/.hermes volume)
+#   5/7 apply Hermes config: model + cron.model pin + timezone UTC ('hermes config set',
 #       with a printed manual fallback when the CLI is absent)
-#   5/6 enable the coordinator plugin + kanban toolset (plugins.enabled / top-level
+#   6/7 enable the coordinator plugin + kanban toolset (plugins.enabled / top-level
 #       toolsets — upstream opt-in gates; printed in-container fallback when the CLI
 #       is absent, since the plugin dir only materializes inside the container)
-#   6/6 seed data/project/ from project-template/ (first-boot files; existing files
+#   7/7 seed data/project/ from project-template/ (first-boot files; existing files
 #       are never overwritten)
 #
 # Overridable env knobs (defaults keep production behavior; overrides exist for
@@ -93,7 +97,7 @@ step_validate_config() {
 }
 
 step_install_soul_md() {
-  echo "== [3/6] SOUL.md (persona) =="
+  echo "== [3/7] SOUL.md (persona) =="
   if [[ "$DRY_RUN" -eq 1 ]]; then
     if [[ -f "$PERSONA_SRC" ]]; then
       echo "  WOULD install: $PERSONA_SRC -> $HERMES_HOME_DIR/SOUL.md"
@@ -113,13 +117,38 @@ step_install_soul_md() {
   echo "  installed: $HERMES_HOME_DIR/SOUL.md"
 }
 
+step_install_skills() {
+  echo "== [4/7] Coordinator skills -> runtime skill store (template-owned, overwrite) =="
+  local src name dest installed=0
+  for src in "$REPO_ROOT"/prompts/skills/*/SKILL.md; do
+    if [[ ! -f "$src" ]]; then
+      echo "  WARNING: no prompts/skills/*/SKILL.md found - skipping the skills install." >&2
+      echo "           Re-run setup after adding them." >&2
+      return 0
+    fi
+    name="$(basename "$(dirname "$src")")"
+    dest="$HERMES_HOME_DIR/skills/coordinator-$name/SKILL.md"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      echo "  WOULD install: $src -> $dest"
+    else
+      mkdir -p "$(dirname "$dest")"
+      cp "$src" "$dest"
+      echo "  installed: $dest"
+      installed=$((installed + 1))
+    fi
+  done
+  if [[ "$DRY_RUN" -ne 1 ]]; then
+    echo "  installed $installed skill(s) under $HERMES_HOME_DIR/skills/"
+  fi
+}
+
 hermes_set() {
   echo "  running: hermes config set $1 $2"
   hermes config set "$1" "$2"
 }
 
 step_apply_hermes_config() {
-  echo "== [4/6] Hermes config (model + cron.model pin + timezone UTC) =="
+  echo "== [5/7] Hermes config (model + cron.model pin + timezone UTC) =="
   local model="$HERMES_MODEL_VALUE"
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "  WOULD run (via the hermes CLI if present; otherwise apply manually):"
@@ -149,7 +178,7 @@ print_in_container_fallback() {
 }
 
 step_enable_plugin_toolsets() {
-  echo "== [5/6] Coordinator plugin + kanban toolset (runtime config) =="
+  echo "== [6/7] Coordinator plugin + kanban toolset (runtime config) =="
   # Upstream gates user plugins behind config.yaml plugins.enabled (opt-in), and the
   # kanban tools' check_fn reads the top-level toolsets list (the all wildcard does NOT
   # enable kanban). Written via 'hermes config set' — a pure config write, so it needs
@@ -172,7 +201,7 @@ step_enable_plugin_toolsets() {
 }
 
 step_seed_project_template() {
-  echo "== [6/6] Seed data/project/ from project-template/ (existing files never overwritten) =="
+  echo "== [7/7] Seed data/project/ from project-template/ (existing files never overwritten) =="
   local template_dir="$REPO_ROOT/project-template"
   local target_root="$PROJECT_DATA_ROOT/project"
   if [[ ! -d "$template_dir" ]]; then
@@ -227,6 +256,7 @@ main() {
   step_env_check
   step_validate_config
   step_install_soul_md
+  step_install_skills
   step_apply_hermes_config
   step_enable_plugin_toolsets
   step_seed_project_template

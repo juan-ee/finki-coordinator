@@ -1,3 +1,9 @@
+---
+name: coordinator-check-in
+description: Use when a member's check-in window opens, their check-in cron fires, or they DM a status update — run the daily check-in flow.
+category: productivity
+---
+
 # Skill: daily check-in
 
 Use when a member's check-in window opens (their cron job fires or they DM around their

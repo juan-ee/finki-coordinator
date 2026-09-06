@@ -1,3 +1,9 @@
+---
+name: coordinator-digest
+description: Use when the daily digest cron fires or the owner asks for the day digest — collect, write the journal, upload to Drive, post the summary.
+category: productivity
+---
+
 # Skill: daily digest (17:00 job)
 
 Use when the digest cron fires (17:00 in the configured anchor timezone — the job's

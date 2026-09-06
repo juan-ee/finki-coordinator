@@ -1,5 +1,6 @@
-"""Smoke tests for scripts/setup.sh: bash syntax, no-write --dry-run, and the
-first-boot project-template seed (step 6) that never overwrites existing files."""
+"""Smoke tests for scripts/setup.sh: bash syntax, no-write --dry-run, the
+first-boot project-template seed (step 7) that never overwrites existing files,
+and the runtime skill-store install (T2.25) that always overwrites."""
 
 import os
 import shutil
@@ -17,6 +18,10 @@ REQUIRED_ENV: dict[str, str] = {
     "OPENROUTER_API_KEY": "test-openrouter-key",
 }
 SECRET_VALUES = tuple(REQUIRED_ENV.values())
+
+# T2.25: the template-owned skills installed into the runtime skill store, one
+# directory per skill under $HERMES_HOME/skills/coordinator-<name>/.
+SKILL_NAMES = ("check-in", "digest", "knowledge", "schedules")
 
 
 def _snapshot(*roots: Path) -> list[tuple[str, int]]:
@@ -104,6 +109,12 @@ def test_dry_run_exits_zero_writes_nothing_and_leaks_no_secrets(tmp_path: Path) 
     assert "WOULD copy: docs/index.md" in stdout
     assert "WOULD copy: inbox/.gitkeep" in stdout
     assert "exists (keep):" not in stdout
+    # T2.25: the plan must include the runtime skill-store install action (one
+    # coordinator-<name>/SKILL.md destination per template skill).
+    for name in SKILL_NAMES:
+        assert str(hermes_home / "skills" / f"coordinator-{name}" / "SKILL.md") in stdout, (
+            f"dry-run plan misses the coordinator-{name} install"
+        )
 
     for value in SECRET_VALUES:
         assert value not in stdout + proc.stderr, "dry-run echoed a secret value"
@@ -174,3 +185,70 @@ def test_real_mode_seeds_project_template_without_overwriting(tmp_path: Path) ->
     assert after["docs/index.md"] == "# edited by the team\n"
     del after["docs/index.md"]
     assert after == before
+
+
+def _installed_skill_paths(hermes_home: Path) -> dict[str, Path]:
+    """Map each skill name to its installed runtime-store path."""
+    return {
+        name: hermes_home / "skills" / f"coordinator-{name}" / "SKILL.md" for name in SKILL_NAMES
+    }
+
+
+def test_real_mode_installs_all_skills_with_frontmatter(tmp_path: Path) -> None:
+    """Real mode lands every skill at coordinator-<name>/SKILL.md under HERMES_HOME,
+    each carrying the three Hermes-style frontmatter keys (name/description/category)."""
+    env = _real_mode_env(tmp_path)
+    proc = subprocess.run(
+        ["bash", str(SETUP_SH)],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        env=env,
+        check=False,
+    )
+
+    assert proc.returncode == 0, f"real run failed:\n{proc.stdout}\n{proc.stderr}"
+
+    for name, installed in _installed_skill_paths(tmp_path / "hermes-home").items():
+        assert installed.is_file(), f"missing install for coordinator-{name}"
+        text = installed.read_text(encoding="utf-8")
+        assert text.startswith("---"), f"no frontmatter header: {installed}"
+        header = text.split("---", 2)[1]
+        assert f"name: coordinator-{name}" in header, installed
+        assert "description: " in header, installed
+        assert "category: productivity" in header, installed
+        assert header.strip(), f"empty frontmatter body: {installed}"
+
+
+def test_real_mode_skill_install_overwrites_mutated_files(tmp_path: Path) -> None:
+    """The template is authoritative: every run re-copies the skills, so a mutated
+    installed file is replaced (unlike the project seed, which never overwrites)."""
+    env = _real_mode_env(tmp_path)
+    first = subprocess.run(
+        ["bash", str(SETUP_SH)],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        env=env,
+        check=False,
+    )
+    assert first.returncode == 0, f"first run failed:\n{first.stdout}\n{first.stderr}"
+
+    installed = _installed_skill_paths(tmp_path / "hermes-home")["knowledge"]
+    assert installed.is_file(), "knowledge skill not installed by the first run"
+    installed.write_text("# mutated after install — kb_sync copy lives here\n", encoding="utf-8")
+
+    second = subprocess.run(
+        ["bash", str(SETUP_SH)],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        env=env,
+        check=False,
+    )
+    assert second.returncode == 0, f"re-run failed:\n{second.stdout}\n{second.stderr}"
+
+    source = (REPO_ROOT / "prompts" / "skills" / "knowledge" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert installed.read_text(encoding="utf-8") == source, "template did not win"
