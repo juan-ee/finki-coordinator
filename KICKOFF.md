@@ -88,7 +88,7 @@ clean → say `mark T0.7 done and update ROADMAP.md`.
 |---|---|---|
 | **One task** | checkbox `[x]` + review "no hard violations" + commit exists | the orchestrator's one-liner; `git log --oneline` |
 | **One phase** | all boxes in the phase ticked + gate doc written | `grep -c "\- \[x\]" ROADMAP.md` vs task count |
-| **The project** | all 31 ticked + 3 gate docs signed by you + final test: clone the repo to a fresh folder, follow only the README, and the bot boots | the "stranger test" |
+| **The project** | all ROADMAP boxes ticked + every MANUAL-GATE doc signed by you + final test: clone the repo to a fresh folder, follow only the README, and the bot boots | the "stranger test" |
 
 Hard stop conditions (the session MUST stop and tell you): a MANUAL-GATE, a
 twice-blocked dependency, an unclassifiable review finding.

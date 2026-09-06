@@ -100,7 +100,7 @@ knowledge_search) is deleted. Invariants: **git safety net · synthesis-vs-copy-
   reciting file content into chat as the "update"; hand-copying verbatim
   file-by-file as "sync" (the v6.1 gate failure mode). Tests: prompt assertions for
   the forbidden patterns + the move-after-ingest rule.
-- [ ] **T2.34 `DOC` — README.md + KICKOFF.md rewrite for v7** — architecture lines
+- [x] **T2.34 `DOC` — README.md + KICKOFF.md rewrite for v7** — architecture lines
   (Pi-local record, tunnel diagram), quickstart gains the Cloudflare/Access setup
   pointer, tool count 8, no sync script. Acceptance: a stranger can clone and follow
   the README alone.
@@ -273,7 +273,19 @@ Log new judgement calls and residuals here, newest first.
   guards a proposal §5 property (borderline scope, kept — it pins "no inbound
   ports" as services are added); `data/site-build.log` (cron redirect target) is
   under gitignored data/; the `*/15` cron is a fixed UTC interval (TZ-invariant —
-  no scheduling-law arithmetic outside scheduling.py). Process incident: the first
+  no scheduling-law arithmetic outside scheduling.py).
+
+- 2026-09-06 (T2.34): DOC task done directly. README rewritten for v7: status
+  banner (Phase 2.5 gate as milestone), skills bullet gains inbox + backup + the
+  site/tunnel bullet, the architecture diagram gains the full exposure chain
+  (docs/ → site → caddy → tunnel → Access → kb./board. + the three Drive folders),
+  requirements gain the Cloudflare account, quickstep 2 rewords drive_root as the
+  backup + inbox root, step 4 documents setup.sh's new behavior (seed + git init +
+  site crontab + backup cron print), steps 7-8 add the owner-manual exposure
+  click-path pointer and the phase2.5 gate, Development gains `make site-build`,
+  the status table splits Phase 2 (signed off) from Phase 2.5 (gate). KICKOFF.md:
+  the stale "all 31 ticked + 3 gate docs" row is now phase-aware (the total grew
+  with the v7 phases; the acceptance is the boxes + every MANUAL-GATE doc). Process incident: the first
   install-line splice accidentally dropped the crontab call and one debug run
   wrote to the REAL crontab — cleaned (it was empty before; verified 0 lines).
 
