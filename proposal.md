@@ -281,6 +281,9 @@ knowledge-sync watermark.
 
 ## 3. Knowledge: Drive is the record; the agent is its librarian (v6)
 
+> ⚠️ **Superseded in part by §12 (v7, owner decision 2026-09-06): the Pi is now the
+> record; Drive is backup + inbox. This body describes v6.1 until T2.27 folds it.**
+
 **Layout (owner decision 2026-09-03):** Google Drive holds the team-edited docs — the
 record. The Pi holds no mirror: the local side carries only the agent-owned, rebuildable
 cache + index (the `knowledge`/`knowledge_fts` tables inside `hermes-coord.db`, §1)
@@ -628,3 +631,81 @@ Everything from step 10 onward is conversation. No SSH after boot day except upg
   (missing OAuth) → resolved via the skill's setup → Drive-scoping deviation →
   sync incident + server-side verification (99 chunks / 14 files, zero pollution,
   diacritics match proven). Remaining boxes run after T2.18–T2.20 land (T2.21).
+
+## 12. Changelog v6.1 → v7 (owner decision 2026-09-06): the Pi is the record; Drive = backup + inbox
+
+**Decision.** The knowledge base moves from "Drive is the record, local cache is an
+index" (§3, v6.1) to **"the Pi holds the record."** All `.md` files live in the agent
+workspace (`data/project/docs/`); the agent writes them directly and reads them back
+as plain files; a static site is rendered from that folder and exposed through a
+Cloudflare Tunnel. Google Drive is demoted to two roles: **daily backup** and
+**document inbox**. The cache/FTS5 indirection is deleted.
+
+**Owner requirements (2026-09-06, verbatim intent):**
+- `.md` files live only on the Pi. No cache-DB-backed viewer (Datasette rejected —
+  "ugly"), and the website never reads the knowledge cache.
+- Remove the Drive back-and-forth: the agent writes into the project folder; the site
+  renders from it. No per-write Drive upload — the v6.1 write-through (T2.20) is
+  REVERSED, and the T2.25 `journal/` Drive convention with it: journals stay local
+  under `data/project/journal/` and ride the local tar backup (T4.1).
+- Drive root carries exactly three folders: `input/` (humans drop documents),
+  `processed/` (after the agent has ingested them), `knowledge_base/` (the daily
+  backup snapshot of `data/project/docs/`).
+- Backup runs once a day (cron). Ingestion from `input/` is agent-driven on command:
+  read the uploaded documents, update the knowledge base, move the original to
+  `processed/`.
+
+**Target shape (v7):**
+
+```
+data/project/docs/*.md          ← the record (agent writes; git-versioned)
+  └─ mkdocs build ─► data/site/ ─► caddy (127.0.0.1:8080) ─┐
+Hermes dashboard (127.0.0.1:9119, /kanban tab) ────────────┤
+                                                           ▼
+                                              cloudflared (outbound-only tunnel)
+                                                           ▼
+                                    Cloudflare edge — Access: Google SSO (team only)
+                                                           ▼
+                                        kb.<domain> · board.<domain>  (Ecuador ok,
+                                        ~250 ms/click; static pages edge-cached)
+
+Drive (backup + inbox only): input/ · processed/ · knowledge_base/ (daily, 03:00 UTC)
+```
+
+**Invariants (non-negotiable — they carry the v6.1 scars forward):**
+1. **Git safety net.** `data/project/docs/` is its own git repo (setup.sh initializes
+   it). The daily backup job commits BEFORE it uploads. A local-only record without
+   local history violates this section.
+2. **Synthesis vs copy-pipe (rule 11, generalized).** The agent may READ `input/`
+   documents and WRITE new/updated `.md` under `docs/` — transformation is the job.
+   File MOVEMENT (`input/` → `processed/`) and uploads are `$GAPI` CLI operations the
+   agent drives as commands — file content never flows through LLM context for the
+   purpose of transfer. The agent never recites a document into chat as its
+   "knowledge base update".
+3. **The backup is sacred.** One backup per day means up to a day of work at risk
+   (SD-card death is the canonical Pi failure). The 03:00 UTC job is load-bearing:
+   verified server-side in the phase gate (file count in `knowledge_base/`), and a
+   silent failure is a production incident (loud group post + Notes log entry).
+
+**Deleted (v6.1 machinery that existed only because Drive was the record):**
+`scripts/sync_knowledge.py`, `src/coordinator/syncing.py`, the `knowledge` +
+`knowledge_fts` tables, `KnowledgeRepo`, the `knowledge_search` tool (toolset
+9 → 8), the T2.23 freshness gate, the `knowledge.*` config keys. The agent reads its
+own workspace files directly (file tools / ripgrep) — plain search absorbs
+`knowledge_search`. T5.1's vector-RAG trigger criteria remain the escape hatch.
+
+**Kept unchanged:** members/checkins/settings, the scheduling + cron law, the
+Telegram gateway (host networking, outbound-only), the `$GAPI` skill + OAuth (now
+serving inbox + backup only), the kanban board via Hermes' built-in dashboard
+(`HERMES_DASHBOARD=true` + its fail-closed auth gate; exposed through the same
+tunnel), the persona and hardening phases.
+
+**Open-task impact (marked in place in ROADMAP.md):** T2.21 and T2.24 are superseded
+(the sync machinery they target is deleted — no gate refresh, no watermark, no
+cursor). T2.17's gate doc stays as historical record; its still-live checks ($GAPI
+credential, Telegram door) fold into the new phase gate (T2.35). T4.1's "no Drive
+copy step" rationale is updated: the primary off-site backup is now the agent's daily
+`knowledge_base/` push (T2.32); T4.1 remains the local tar convenience copy.
+
+**Implementation:** ROADMAP Phase 2.5 (T2.27–T2.35). Sections §1–§3 bodies are folded
+to v7 by T2.27; until then, where §1–§3 conflict with THIS section, §12 wins.
