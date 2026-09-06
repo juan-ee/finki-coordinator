@@ -543,7 +543,10 @@ Pi/human; the agent only produces/refreshes the verification script.
 
 - [ ] **T4.2 `DOC` — `docs/runbooks/`** — `restore-backup.md`, `new-member.md`
   (proposal §8.2 v6 door-first flow — `allow.sh` + the sender's ID completing the row —
-  verbatim steps), `dst-resync.md` (the twice-a-year conversation). (The v5
+  verbatim steps), `dst-resync.md` (the twice-a-year conversation), and the
+  token-permissions troubleshooting runbook deferred from T2.26 (root-owned
+  `google_token.json`: the chown/chmod remedy, the `docker compose exec --user`
+  guard, setup.sh step 8/8, the sync script's pre-flight). (The v5
   `bisync-recovery.md` runbook is gone with bisync — D4.)
 
 - [ ] **T4.3 `DOC` `MANUAL-GATE` — `docs/verify/phase4.md`** — backup restore drill

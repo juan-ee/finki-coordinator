@@ -406,7 +406,8 @@ DEFAULT_TOKEN_BASENAME = "google_token.json"
 
 def default_token_path() -> Path:
     """The Google token file where determinable: $HERMES_HOME, else the ~/.hermes
-    fallback (the same env handling as default_db_path / scripts/setup.sh's install)."""
+    fallback (env handling like default_db_path's HERMES_HOME branch; the no-env
+    fallback differs — the token lives in the Hermes home, the DB in the repo)."""
     home = os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes")
     return Path(home) / DEFAULT_TOKEN_BASENAME
 
@@ -437,7 +438,7 @@ def token_write_issue(
         return None
     return (
         f"Google token not writable by the effective uid: {token_path}"
-        f" (owner {st.st_uid}, mode {oct(st.st_mode & 0o777)}) vs uid {euid} —"
+        f" (owner {st.st_uid}, mode {st.st_mode & 0o777:o}) vs uid {euid} —"
         " the google-workspace CLI cannot save a refreshed token (the root-owned-"
         "token failure, not an auth problem). Fix:"
         f" {remedy}"

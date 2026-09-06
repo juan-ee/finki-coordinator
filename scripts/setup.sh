@@ -277,39 +277,52 @@ step_check_google_token() {
   local token_path="$HERMES_HOME_DIR/google_token.json"
   local container_uid="${HERMES_UID:-$(id -u)}"
   local container_gid="${HERMES_GID:-$(id -g)}"
-  echo "  checking: $token_path (container runtime uid $container_uid)"
-  if [[ ! -f "$token_path" ]]; then
-    echo "  absent: no Google token yet (created by the in-container OAuth —"
-    echo "          docs/verify/phase2.md step 1; run it as the runtime user, see below)"
+  local numeric_re='^[0-9]+$'
+  # A non-numeric uid/gid must not reach the arithmetic below: under set -u the
+  # (( )) would abort the whole script with a cryptic unbound-variable error.
+  if [[ ! "$container_uid" =~ $numeric_re || ! "$container_gid" =~ $numeric_re ]]; then
+    echo "  WARNING: HERMES_UID/HERMES_GID must be numeric (got"
+    echo "  '$container_uid'/'$container_gid') — skipping the token check (fix .env, re-run)."
   else
-    local owner ogid mode remedy
-    owner="$(stat_uid "$token_path")"
-    ogid="$(stat_gid "$token_path")"
-    mode="$(stat_mode "$token_path")"
-    if uid_can_write "$container_uid" "$container_gid" "$owner" "$ogid" "$mode"; then
-      echo "  ok: owner $owner, mode $mode — writable by uid $container_uid"
+    echo "  checking: $token_path (container runtime uid $container_uid)"
+    if [[ "$EUID" -eq 0 && -z "${HERMES_UID:-}" ]]; then
+      echo "  WARNING: running as root with HERMES_UID unset — the container runtime uid"
+      echo "  is unknowable here and the check below runs as uid 0 (root writes"
+      echo "  anything), so a root-owned token would NOT be flagged. Set HERMES_UID."
+    fi
+    if [[ ! -f "$token_path" ]]; then
+      echo "  absent: no Google token yet (created by the in-container OAuth —"
+      echo "          docs/verify/phase2.md step 1; run it as the runtime user, see below)"
     else
-      echo "  WARNING: owner $owner, mode $mode — NOT writable by uid $container_uid."
-      echo "  Every token refresh write by the runtime user fails in this state"
-      echo "  (the 2026-09-05 root-owned-token incident; sync_knowledge.py's"
-      echo "  pre-flight and the gws CLI both hit it)."
-      if [[ "$owner" -eq "$container_uid" ]]; then
-        remedy="chmod 600 $token_path"
+      local owner ogid mode remedy
+      owner="$(stat_uid "$token_path")"
+      ogid="$(stat_gid "$token_path")"
+      mode="$(stat_mode "$token_path")"
+      if uid_can_write "$container_uid" "$container_gid" "$owner" "$ogid" "$mode"; then
+        echo "  ok: owner $owner, mode $mode — writable by uid $container_uid"
       else
-        remedy="sudo chown $container_uid:$container_gid $token_path && chmod 600 $token_path"
-      fi
-      if [[ "$DRY_RUN" -eq 1 ]]; then
-        echo "  dry-run: WOULD apply: $remedy"
-      elif [[ "$EUID" -eq 0 ]]; then
-        chown "$container_uid:$container_gid" "$token_path"
-        chmod 600 "$token_path"
-        echo "  repaired: owner $container_uid, mode 600"
-      elif [[ "$owner" -eq "$EUID" && "$owner" -eq "$container_uid" ]]; then
-        chmod 600 "$token_path"
-        echo "  repaired: mode 600 (you own the token and are the container uid)"
-      else
-        echo "  fix (run on the host):"
-        echo "    $remedy"
+        echo "  WARNING: owner $owner, mode $mode — NOT writable by uid $container_uid."
+        echo "  Every token refresh write by the runtime user fails in this state"
+        echo "  (the 2026-09-05 root-owned-token incident; sync_knowledge.py's"
+        echo "  pre-flight and the gws CLI both hit it)."
+        if [[ "$owner" -eq "$container_uid" ]]; then
+          remedy="chmod 600 $token_path"
+        else
+          remedy="sudo chown $container_uid:$container_gid $token_path && chmod 600 $token_path"
+        fi
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+          echo "  dry-run: WOULD apply: $remedy"
+        elif [[ "$EUID" -eq 0 ]]; then
+          chown "$container_uid:$container_gid" "$token_path"
+          chmod 600 "$token_path"
+          echo "  repaired: owner $container_uid, mode 600"
+        elif [[ "$owner" -eq "$EUID" && "$owner" -eq "$container_uid" ]]; then
+          chmod 600 "$token_path"
+          echo "  repaired: mode 600 (you own the token and are the container uid)"
+        else
+          echo "  fix (run on the host):"
+          echo "    $remedy"
+        fi
       fi
     fi
   fi

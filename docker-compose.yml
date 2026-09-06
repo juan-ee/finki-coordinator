@@ -50,6 +50,14 @@ services:
       # Pi set HERMES_UID / HERMES_GID in .env to your own `id -u` / `id -g`.
       - HERMES_UID=${HERMES_UID:-10000}
       - HERMES_GID=${HERMES_GID:-10000}
+      # T2.26 evaluation (exec-user guard): the exec user CANNOT be pinned at the
+      # compose level — the compose spec has no exec-user key (exec inherits the
+      # container's user; root here, because the upstream s6 entrypoint must start
+      # as root to drop to HERMES_UID/GID), and a service-level `user:` would break
+      # that privilege drop. The guard is documentation instead: setup.sh step 8/8
+      # prints `docker compose exec --user <runtime uid> …` for every token-writing
+      # command (OAuth, checks, the gws CLI), and sync_knowledge.py pre-flights the
+      # token's writability (fail-loud remedy).
       # Secrets & credentials — bare list form: values flow from the runtime
       # environment (sourced .env), never rendered into this file or its config.
       - TELEGRAM_BOT_TOKEN

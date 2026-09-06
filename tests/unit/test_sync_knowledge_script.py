@@ -438,14 +438,18 @@ def _token(tmp_path: Path, mode: int) -> Path:
 def test_token_write_issue_absent_or_writable_returns_none(tmp_path: Path) -> None:
     """No token (pre-OAuth) or a writable token passes the pre-flight silently."""
     assert sync_script.token_write_issue(tmp_path / "google_token.json") is None
-    assert sync_script.token_write_issue(_token(tmp_path, 0o600)) is None
+    token = _token(tmp_path, 0o600)
+    st = token.stat()
+    assert sync_script.token_write_issue(token, euid=st.st_uid, egid=st.st_gid) is None
 
 
 def test_token_write_issue_owner_blocked_by_mode_names_chmod(tmp_path: Path) -> None:
-    """Owner-euid token without the owner write bit: chmod remedy, no sudo needed."""
+    """Owner-euid token without the owner write bit: chmod remedy, no sudo needed.
+    (The effective identity is injected explicitly — root-proof under rule 9.)"""
     token = _token(tmp_path, 0o444)
+    st = token.stat()
 
-    issue = sync_script.token_write_issue(token)
+    issue = sync_script.token_write_issue(token, euid=st.st_uid, egid=st.st_gid)
 
     assert issue is not None
     assert str(token) in issue
@@ -481,6 +485,10 @@ def test_token_write_issue_group_writable_by_effective_gid_ok(tmp_path: Path) ->
     assert sync_script.token_write_issue(token, euid=st.st_uid + 1, egid=st.st_gid) is None
 
 
+@pytest.mark.skipif(
+    os.geteuid() == 0,
+    reason="main()'s pre-flight uses the ambient euid; root short-circuits it",
+)
 def test_main_preflight_rejects_unwritable_token_before_any_transport(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

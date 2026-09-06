@@ -1,6 +1,10 @@
 """Smoke tests for scripts/setup.sh: bash syntax, no-write --dry-run, the
 first-boot project-template seed (step 7) that never overwrites existing files,
-and the runtime skill-store install (T2.25) that always overwrites."""
+the runtime skill-store install (T2.25) that always overwrites, and the Google
+token-permission check + exec-user guard (T2.26).
+
+The T2.26 repair/remedy tests pin NON-ROOT operator behavior (root takes the
+script's chown+chmod repair branch), so they skip under a root pytest."""
 
 import os
 import shutil
@@ -8,6 +12,8 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SETUP_SH = REPO_ROOT / "scripts" / "setup.sh"
@@ -295,6 +301,13 @@ def _run_setup(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     )
 
 
+_requires_non_root = pytest.mark.skipif(
+    os.geteuid() == 0,
+    reason="root takes setup.sh's chown+chmod repair branch, not the operator paths",
+)
+
+
+@_requires_non_root
 def test_real_mode_reports_ok_token_untouched(tmp_path: Path) -> None:
     """A writable token (owner == container uid, mode 600) prints ok and is untouched."""
     token = _write_token(tmp_path / "hermes-home", 0o600)
@@ -306,6 +319,7 @@ def test_real_mode_reports_ok_token_untouched(tmp_path: Path) -> None:
     assert stat.S_IMODE(token.stat().st_mode) == 0o600
 
 
+@_requires_non_root
 def test_real_mode_repairs_mode_mangled_token_owned_by_container_uid(tmp_path: Path) -> None:
     """Operator-owned token with the write bit lost: real mode chmod-repairs it."""
     token = _write_token(tmp_path / "hermes-home", 0o444)
@@ -317,6 +331,7 @@ def test_real_mode_repairs_mode_mangled_token_owned_by_container_uid(tmp_path: P
     assert stat.S_IMODE(token.stat().st_mode) == 0o600
 
 
+@_requires_non_root
 def test_real_mode_prints_sudo_remedy_for_foreign_owned_token_and_touches_nothing(
     tmp_path: Path,
 ) -> None:
@@ -373,3 +388,17 @@ def test_real_mode_absent_token_prints_absent_not_error(tmp_path: Path) -> None:
 
     assert proc.returncode == 0, f"real run failed:\n{proc.stdout}\n{proc.stderr}"
     assert "absent:" in proc.stdout
+
+
+def test_real_mode_skips_check_on_non_numeric_container_uid(tmp_path: Path) -> None:
+    """A non-numeric HERMES_UID must not abort the script in the set -u arithmetic
+    (the old form died cryptically at step 8/8, after steps 1-7 had already
+    applied); the step warns, skips, and still prints the exec-user guard."""
+    env = _real_mode_env(tmp_path)
+    env["HERMES_UID"] = "abc"
+
+    proc = _run_setup(env)
+
+    assert proc.returncode == 0, f"real run failed:\n{proc.stdout}\n{proc.stderr}"
+    assert "HERMES_UID/HERMES_GID must be numeric" in proc.stdout
+    assert "docker compose exec --user" in proc.stdout
