@@ -4,12 +4,11 @@ No business logic lives here (AGENTS.md rule 3): the adapter maps tool names -> 
 schemas -> the handlers.py functions; handler result dicts pass through dispatch()
 untouched and are serialized to JSON only at the host boundary (upstream accepts str
 tool results only — see _bind). Concrete wiring (repos, clock) happens in
-register_tools()/wire_runtime() and only there. Hermes
-itself is NOT a dependency and is never imported: the host context arrives injected via
-the HermesContext Protocol, so nothing at module import time can fail when Hermes is
-absent — the structural form of the guarded import. If Hermes symbols are ever needed
-here, import them lazily inside a function under try/except ImportError, never at module
-top level.
+register_tools()/wire_runtime() and only there. Hermes itself is NOT a dependency and
+is never imported: the host context arrives injected via the HermesContext Protocol, so
+nothing at module import time can fail when Hermes is absent — the structural form of
+the guarded import. If Hermes symbols are ever needed here, import them lazily inside a
+function under try/except ImportError, never at module top level.
 
 Imports are relative (from .handlers, not coordinator.handlers) because upstream loads
 this directory as the package `hermes_plugins.coordinator` with __path__ set to the
@@ -19,26 +18,23 @@ container, so absolute self-imports would raise ModuleNotFoundError at plugin lo
 The entrypoint upstream discovery actually calls is coordinator.register (package
 __init__, single positional ctx): it uses wire_runtime() to build the SQLite-backed
 repo stack + SystemClock at the runtime layout, then delegates to register_tools().
+v7 (T2.28): the knowledge cache and the read-through freshness gate are deleted
+(proposal §12) — the agent reads its own docs/ files directly, so the toolset is the
+eight roster/check-in/settings tools and the wiring carries no knowledge repository.
 """
 
 import json
 import os
-import subprocess
-import sys
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final, NotRequired, Protocol, TypedDict, cast
+from typing import Final, Protocol, TypedDict
 
 from . import db
-from .config import DEFAULT_FRESHNESS_TTL_MINUTES
 from .handlers import (
     Clock,
-    FreshnessOutcome,
-    KnowledgeFreshness,
     checkin_submit,
     checkins_by_date,
-    knowledge_search,
     member_add,
     member_delete,
     member_list,
@@ -49,8 +45,6 @@ from .handlers import (
 from .repositories import (
     CheckinsRepo,
     CheckinsRepository,
-    KnowledgeRepo,
-    KnowledgeRepository,
     MembersRepo,
     MembersRepository,
     SettingsRepo,
@@ -61,39 +55,16 @@ HandlerFn = Callable[
     [dict[str, object], MembersRepository, CheckinsRepository, SettingsRepository, Clock],
     dict[str, object],
 ]
-"""The uniform handler signature (payload + wired deps -> result dict) most tools target."""
-
-KnowledgeHandlerFn = Callable[
-    [
-        dict[str, object],
-        MembersRepository,
-        CheckinsRepository,
-        SettingsRepository,
-        Clock,
-        KnowledgeRepository,
-        KnowledgeFreshness | None,
-    ],
-    dict[str, object],
-]
-"""Signature for the knowledge tools: the uniform deps plus the wired knowledge cache
-and freshness gate (the gate is None when the host wired none)."""
-
-SpecHandler = HandlerFn | KnowledgeHandlerFn
-"""A TOOL_SPECS handler: knowledge tools take the cache as an extra trailing dep."""
+"""The uniform handler signature (payload + wired deps -> result dict) every tool targets."""
 
 
 class ToolSpec(TypedDict):
-    """One TOOL_SPECS entry: host-facing description, payload schema, handler, toolset.
-
-    takes_knowledge (optional, default False) marks the knowledge tools: dispatch
-    hands them the wired KnowledgeRepository as an extra trailing argument.
-    """
+    """One TOOL_SPECS entry: host-facing description, payload schema, handler, toolset."""
 
     description: str
     schema: dict[str, object]
-    handler: SpecHandler
+    handler: HandlerFn
     toolset: str
-    takes_knowledge: NotRequired[bool]
 
 
 class HermesContext(Protocol):
@@ -134,7 +105,6 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
         },
         "handler": member_add,
         "toolset": "coordinator",
-        "takes_knowledge": False,
     },
     "member_update": {
         "description": (
@@ -157,7 +127,6 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
         },
         "handler": member_update,
         "toolset": "coordinator",
-        "takes_knowledge": False,
     },
     "member_list": {
         "description": "List members (default: the active roster); rows omit telegram_id.",
@@ -169,7 +138,6 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
         },
         "handler": member_list,
         "toolset": "coordinator",
-        "takes_knowledge": False,
     },
     "member_delete": {
         "description": (
@@ -185,7 +153,6 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
         },
         "handler": member_delete,
         "toolset": "coordinator",
-        "takes_knowledge": False,
     },
     "checkin_submit": {
         "description": "Record one member's check-in for an ISO date (latest submission wins).",
@@ -204,7 +171,6 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
         },
         "handler": checkin_submit,
         "toolset": "coordinator",
-        "takes_knowledge": False,
     },
     "checkins_by_date": {
         "description": "List the check-ins recorded on an ISO date, ordered by member id.",
@@ -216,7 +182,6 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
         },
         "handler": checkins_by_date,
         "toolset": "coordinator",
-        "takes_knowledge": False,
     },
     "setting_get": {
         "description": (
@@ -230,7 +195,6 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
         },
         "handler": setting_get,
         "toolset": "coordinator",
-        "takes_knowledge": False,
     },
     "setting_set": {
         "description": "Persist one setting after per-key validation.",
@@ -242,27 +206,6 @@ TOOL_SPECS: Final[dict[str, ToolSpec]] = {
         },
         "handler": setting_set,
         "toolset": "coordinator",
-        "takes_knowledge": False,
-    },
-    "knowledge_search": {
-        "description": (
-            "Search the local knowledge cache (SQLite FTS5) for team documents; returns"
-            " the top hits (file_id/path/title/heading). The cache is a finding aid -"
-            " confirm against the LIVE Drive original (via $GAPI) before quoting."
-            " limit defaults to 3 and is capped at 10."
-        ),
-        "schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string"},
-                "limit": {"type": "integer"},
-            },
-            "required": ["query"],
-            "additionalProperties": False,
-        },
-        "handler": knowledge_search,
-        "toolset": "coordinator",
-        "takes_knowledge": True,
     },
 }
 
@@ -275,24 +218,12 @@ def dispatch(
     checkins: CheckinsRepository,
     settings: SettingsRepository,
     clock: Clock,
-    knowledge: KnowledgeRepository | None = None,
-    freshness: KnowledgeFreshness | None = None,
 ) -> dict[str, object]:
     """Route one payload to its handler; return the handler's result dict untouched."""
     spec = TOOL_SPECS.get(name)
     if spec is None:
         raise KeyError(f"unknown tool {name!r}: known tools are {', '.join(sorted(TOOL_SPECS))}")
-    if spec.get("takes_knowledge", False):
-        if knowledge is None:
-            raise KeyError(f"tool {name!r} requires a wired knowledge repository")
-        return cast(
-            "KnowledgeHandlerFn",
-            spec["handler"],
-        )(payload, members, checkins, settings, clock, knowledge, freshness)
-    return cast(
-        "HandlerFn",
-        spec["handler"],
-    )(payload, members, checkins, settings, clock)
+    return spec["handler"](payload, members, checkins, settings, clock)
 
 
 def _bind(
@@ -301,8 +232,6 @@ def _bind(
     checkins: CheckinsRepository,
     settings: SettingsRepository,
     clock: Clock,
-    knowledge: KnowledgeRepository | None,
-    freshness: KnowledgeFreshness | None = None,
 ) -> Callable[..., str]:
     """Return the host-facing callable dispatching a payload to this tool's handler.
 
@@ -322,8 +251,6 @@ def _bind(
             checkins=checkins,
             settings=settings,
             clock=clock,
-            knowledge=knowledge,
-            freshness=freshness,
         )
         return json.dumps(result, default=str)
 
@@ -337,8 +264,6 @@ def register_tools(
     checkins: CheckinsRepository,
     settings: SettingsRepository,
     clock: Clock,
-    knowledge: KnowledgeRepository | None,
-    freshness: KnowledgeFreshness | None = None,
 ) -> list[str]:
     """Register every TOOL_SPECS tool with the host ctx; return the names in spec order.
 
@@ -352,7 +277,7 @@ def register_tools(
             name=name,
             description=spec["description"],
             schema={**spec["schema"], "description": spec["description"]},
-            handler=_bind(name, members, checkins, settings, clock, knowledge, freshness),
+            handler=_bind(name, members, checkins, settings, clock),
             toolset=spec["toolset"],
         )
         registered.append(name)
@@ -371,114 +296,10 @@ class SystemClock:
         return datetime.now(UTC)
 
 
-FRESHNESS_SCRIPT_PATH = Path("/opt/data/scripts/sync_knowledge.py")
-"""The compose-mounted sync script (T2.19) the in-container freshness gate runs."""
-
-FRESHNESS_LAST_CHECK_KEY = "knowledge_last_freshness_check"
-"""Settings-table row stamping the last freshness attempt (NOT an agent-facing knob:
-it is deliberately absent from repositories.DEFAULTS so setting_get/set cannot touch
-it)."""
-
-
-class FreshnessGate:
-    """Concrete KnowledgeFreshness: the T2.18 engine as a bounded subprocess.
-
-    refresh() runs the deterministic sync script (the same one-shot the knowledge
-    skill mandates after uploads) with a hard timeout and stdin detached, and stamps
-    the attempt in the settings table regardless of outcome — the debounce must hold
-    through a Drive outage. Failures degrade (the search then serves the cache);
-    nothing here can hard-fail a read. Owns its own short-lived connection: the
-    runtime store is WAL + busy_timeout, built for exactly this sharing.
-    """
-
-    def __init__(
-        self,
-        *,
-        ttl_minutes: int,
-        script_path: Path = FRESHNESS_SCRIPT_PATH,
-        db_path: Path | None = None,
-        timeout_seconds: int = 120,
-    ) -> None:
-        self._ttl = ttl_minutes
-        self._script_path = script_path
-        self._db_path = db_path if db_path is not None else default_db_path()
-        self._timeout = timeout_seconds
-
-    def ttl_minutes(self) -> int:
-        """Return the configured freshness TTL in minutes."""
-        return self._ttl
-
-    def last_check(self) -> str | None:
-        """Return the stored last-attempt stamp (None when never attempted)."""
-        row = self._settings_row()
-        return None if row is None else str(row)
-
-    def refresh(self, now: str) -> FreshnessOutcome:
-        """Run the sync script once; stamp the attempt; degrade on any failure."""
-        try:
-            result = subprocess.run(
-                [sys.executable, str(self._script_path)],
-                capture_output=True,
-                text=True,
-                stdin=subprocess.DEVNULL,
-                timeout=self._timeout,
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
-            self._stamp(now)
-            return FreshnessOutcome("degraded", f"freshness sync timed out after {self._timeout}s")
-        except OSError as exc:
-            self._stamp(now)
-            return FreshnessOutcome("degraded", f"freshness sync could not start: {exc}")
-        self._stamp(now)
-        if result.returncode != 0:
-            detail = (result.stderr or result.stdout).strip().splitlines()
-            tail = detail[-1][:200] if detail else "no output"
-            return FreshnessOutcome(
-                "degraded", f"sync script failed (exit {result.returncode}): {tail}"
-            )
-        return FreshnessOutcome("refreshed", self._counts_line(result.stdout))
-
-    def _counts_line(self, stdout: str) -> str:
-        """Extract the script's ingested/watermark line (metadata only — rule 11).
-
-        Falls back to a fixed note when the report shape ever changes: nothing
-        unanchored may flow from the script into the LLM-facing summary.
-        """
-        for line in (part.strip() for part in stdout.strip().splitlines()):
-            if line.startswith("ingested"):
-                return line
-        return "no report output"
-
-    def _settings_row(self) -> str | None:
-        """Read the stamp row straight from the settings table (raw: not in DEFAULTS)."""
-        conn = db.connect(self._db_path)
-        try:
-            row = conn.execute(
-                "SELECT value FROM settings WHERE key = ?", (FRESHNESS_LAST_CHECK_KEY,)
-            ).fetchone()
-            return None if row is None else str(row[0])
-        finally:
-            conn.close()
-
-    def _stamp(self, now: str) -> None:
-        """Upsert the attempt stamp (SettingsRepo.set semantics, own connection)."""
-        conn = db.connect(self._db_path)
-        try:
-            conn.execute(
-                "INSERT INTO settings (key, value) VALUES (?, ?)"
-                " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                (FRESHNESS_LAST_CHECK_KEY, now),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-
 def default_db_path() -> Path:
     """Return the runtime coordinator DB path (<HERMES_HOME>/workspace/hermes/hermes-coord.db).
 
-    docker-compose.yml mounts the host's ./data at $HERMES_HOME/workspace, so the store
+    docker-compose.yml mounts the host's ./data at HERMES_HOME/workspace, so the store
     seeded by scripts/init_db.py at <repo>/data/hermes/hermes-coord.db (its documented
     --db location) appears in-container at <HERMES_HOME>/workspace/hermes/hermes-coord.db;
     HERMES_HOME is always set inside the Hermes container (upstream image default
@@ -488,42 +309,12 @@ def default_db_path() -> Path:
     return Path(home) / "workspace" / "hermes" / "hermes-coord.db"
 
 
-def _freshness_ttl_from_config() -> int:
-    """Read knowledge.freshness_ttl_minutes from the runtime config layout.
-
-    docker-compose mounts ./config read-only at /opt/data/config (T2.23), so the
-    operator's validated boot default is visible in-container. Any failure — file
-    absent (host dev checkouts), optional deps unimportable, invalid YAML/schema —
-    falls back to the documented default with a stderr note: the TTL must never take
-    the toolset boot down.
-    """
-    home = os.environ.get("HERMES_HOME")
-    if not home:
-        return DEFAULT_FRESHNESS_TTL_MINUTES
-    candidate = Path(home) / "config" / "config.yaml"
-    if not candidate.is_file():
-        return DEFAULT_FRESHNESS_TTL_MINUTES
-    try:
-        from .config import ConfigError, load_config
-    except ImportError as exc:
-        print(f"warning: freshness TTL falls back to default ({exc})", file=sys.stderr)
-        return DEFAULT_FRESHNESS_TTL_MINUTES
-    try:
-        return load_config(candidate).knowledge.freshness_ttl_minutes
-    except ConfigError as exc:
-        print(f"warning: freshness TTL falls back to default ({exc})", file=sys.stderr)
-        return DEFAULT_FRESHNESS_TTL_MINUTES
-
-
-def wire_runtime() -> tuple[
-    MembersRepo, CheckinsRepo, SettingsRepo, KnowledgeRepo, SystemClock, FreshnessGate
-]:
+def wire_runtime() -> tuple[MembersRepo, CheckinsRepo, SettingsRepo, SystemClock]:
     """Open the runtime SQLite store (migrating as needed) and return the wired stack.
 
     Migrations are idempotent (versioned), so a fresh store is brought up to the shipped
-    schema at gateway boot; seeding stays an explicit operator step (scripts/init_db.py).
-    The freshness gate shares the store (WAL + busy_timeout) and runs the sync script
-    subprocess on due searches.
+    schema at gateway boot (v6.1 stores shed the retired knowledge cache in migration
+    004); seeding stays an explicit operator step (scripts/init_db.py).
     """
     clock = SystemClock()
     path = default_db_path()
@@ -534,10 +325,5 @@ def wire_runtime() -> tuple[
         MembersRepo(conn),
         CheckinsRepo(conn),
         SettingsRepo(conn),
-        KnowledgeRepo(conn),
         clock,
-        FreshnessGate(
-            ttl_minutes=_freshness_ttl_from_config(),
-            db_path=path,
-        ),
     )

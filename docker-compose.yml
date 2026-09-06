@@ -28,18 +28,11 @@ services:
       # Coordinator plugin, mounted read-only into the user-plugin directory
       # (upstream: user plugins live under <HERMES_HOME>/plugins/).
       - ./src/coordinator:/opt/data/plugins/coordinator:ro
-      # Our runtime state: data/hermes/hermes-coord.db (plugin DB + knowledge cache)
-      # and data/project/ (the agent workspace — AGENTS.md, journal/, inbox/; authored
-      # files are uploaded to Drive via $GAPI, not mirrored). Gitignored — never
-      # commit; compose config stays valid while data/ does not exist yet.
+      # Our runtime state: data/hermes/hermes-coord.db (plugin DB) and data/project/
+      # (the agent workspace — AGENTS.md, docs/ = the knowledge record, journal/,
+      # inbox/). Gitignored — never commit; compose config stays valid while data/
+      # does not exist yet.
       - ./data:/opt/data/workspace
-      # The deterministic knowledge-sync script (T2.19), mounted read-only at the
-      # ~/.hermes/scripts/ path hermes cron's --script mode requires — the nightly
-      # knowledge-sync job runs it with --no-agent (no LLM in the data path, rule 11).
-      - ./scripts/sync_knowledge.py:/opt/data/scripts/sync_knowledge.py:ro
-      # Boot defaults (T2.23): the plugin's freshness gate reads
-      # knowledge.freshness_ttl_minutes from config.yaml here at wiring time.
-      - ./config:/opt/data/config:ro
     environment:
       # Timezone law (AGENTS.md #4): the whole container is anchored to UTC —
       # Hermes computes every cron schedule in this single zone; per-member
@@ -56,8 +49,7 @@ services:
       # as root to drop to HERMES_UID/GID), and a service-level `user:` would break
       # that privilege drop. The guard is documentation instead: setup.sh step 8/8
       # prints `docker compose exec --user <runtime uid> …` for every token-writing
-      # command (OAuth, checks, the gws CLI), and sync_knowledge.py pre-flights the
-      # token's writability (fail-loud remedy).
+      # command (OAuth, checks, the gws CLI — all token refresh writes).
       # Secrets & credentials — bare list form: values flow from the runtime
       # environment (sourced .env), never rendered into this file or its config.
       - TELEGRAM_BOT_TOKEN
@@ -67,7 +59,7 @@ services:
       - TELEGRAM_GROUP_ALLOWED_CHATS
       - TELEGRAM_GROUP_ALLOWED_USERS
       - OPENROUTER_API_KEY
-      # No Drive/rclone variables (v6): the agent reaches Drive through Hermes'
+      # No Drive/rclone variables (v6/v7): the agent reaches Drive through Hermes'
       # built-in google-workspace skill ($GAPI) — agent-driven setup, skill-managed
       # credential, nothing Drive-related passes through compose.
     # Gateway command per upstream compose.

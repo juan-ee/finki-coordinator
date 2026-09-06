@@ -35,7 +35,6 @@ TOOL_NAMES = frozenset(
         "checkins_by_date",
         "setting_get",
         "setting_set",
-        "knowledge_search",
     }
 )
 
@@ -65,7 +64,6 @@ EXPECTED_FIELDS: dict[str, tuple[dict[str, str], list[str]]] = {
     ),
     "member_list": ({"active": "integer"}, []),
     "member_delete": ({"member_id": "integer"}, ["member_id"]),
-    "knowledge_search": ({"limit": "integer", "query": "string"}, ["query"]),
     "checkin_submit": (
         {
             "member_id": "integer",
@@ -235,17 +233,17 @@ def _wire() -> tuple[MembersRepository, CheckinsRepository, SettingsRepository, 
 # --- register_tools -------------------------------------------------------------------
 
 
-def test_register_tools_records_exactly_nine_registrations() -> None:
+def test_register_tools_records_exactly_eight_registrations() -> None:
     """register_tools() calls ctx.register_tool once per TOOL_SPECS entry, all coordinator."""
     ctx = FakeCtx()
     members, checkins, settings, clock = _wire()
 
     registered = register_tools(
-        ctx, members=members, checkins=checkins, settings=settings, clock=clock, knowledge=None
+        ctx, members=members, checkins=checkins, settings=settings, clock=clock
     )
 
     names = [call["name"] for call in ctx.calls]
-    assert len(ctx.calls) == 9
+    assert len(ctx.calls) == 8
     assert set(names) == TOOL_NAMES
     assert len(set(names)) == len(names)  # exactly one registration per tool
     assert all(call["toolset"] == "coordinator" for call in ctx.calls)
@@ -257,7 +255,7 @@ def test_register_tools_records_exactly_nine_registrations() -> None:
 
 
 def test_every_schema_is_well_formed() -> None:
-    """All nine schemas: type object, dict properties, list required, required inside properties."""
+    """All eight schemas: type object, dict properties, list required, required inside properties."""
     for name, spec in TOOL_SPECS.items():
         schema = spec["schema"]
         assert schema["type"] == "object", name
@@ -267,13 +265,14 @@ def test_every_schema_is_well_formed() -> None:
         assert schema["additionalProperties"] is False, name
 
 
-def test_tool_specs_cover_exactly_the_nine_tools() -> None:
-    """TOOL_SPECS has exactly the nine tool names, each wired to its handlers.py function.
+def test_tool_specs_cover_exactly_the_eight_tools() -> None:
+    """TOOL_SPECS has exactly the eight tool names, each wired to its handlers.py function.
 
-    The two-call knowledge_sync tool was removed in v6.1 (T2.20): sync is the
-    deterministic script (scripts/sync_knowledge.py), file content never crosses
-    LLM context (AGENTS.md hard rule 11)."""
+    The v6 knowledge_sync tool was removed in v6.1; the v6 knowledge_search tool was
+    removed in v7 (T2.28, proposal §12) — the agent reads its own docs/ files directly
+    (file tools / ripgrep), so the knowledge machinery has no replacement tool."""
     assert set(TOOL_SPECS) == TOOL_NAMES
+    assert "knowledge_search" not in TOOL_SPECS
     for name, handler in (
         ("member_add", handlers.member_add),
         ("member_update", handlers.member_update),
@@ -283,7 +282,6 @@ def test_tool_specs_cover_exactly_the_nine_tools() -> None:
         ("setting_get", handlers.setting_get),
         ("setting_set", handlers.setting_set),
         ("member_delete", handlers.member_delete),
-        ("knowledge_search", handlers.knowledge_search),
     ):
         assert TOOL_SPECS[name]["handler"] is handler, name
 
@@ -338,11 +336,9 @@ def test_registered_schemas_carry_the_model_facing_description() -> None:
     """
     ctx = FakeCtx()
     members, checkins, settings, clock = _wire()
-    register_tools(
-        ctx, members=members, checkins=checkins, settings=settings, clock=clock, knowledge=None
-    )
+    register_tools(ctx, members=members, checkins=checkins, settings=settings, clock=clock)
 
-    assert len(ctx.calls) == 9
+    assert len(ctx.calls) == 8
     for call in ctx.calls:
         schema = call["schema"]
         assert isinstance(schema, dict), call["name"]
@@ -408,36 +404,11 @@ def test_dispatch_unknown_tool_raises_keyerror() -> None:
         )
 
 
-def test_dispatch_knowledge_search_without_wired_knowledge_repo_raises_keyerror() -> None:
-    """Dispatching knowledge_search with knowledge=None raises the wiring-bug KeyError.
-
-    A knowledge tool whose repository was never wired (knowledge=None is legal for
-    the eight repo-free tools) is a wiring bug, not a payload error: the guard
-    refuses loudly instead of letting the handler dereference a None repository.
-    """
-    members, checkins, settings, clock = _wire()
-
-    with pytest.raises(
-        KeyError, match="tool 'knowledge_search' requires a wired knowledge repository"
-    ):
-        dispatch(
-            "knowledge_search",
-            {"query": "x"},
-            members=members,
-            checkins=checkins,
-            settings=settings,
-            clock=clock,
-            knowledge=None,
-        )
-
-
 def test_registered_callable_dispatches_with_the_wired_deps() -> None:
     """A callable register_tools() handed ctx routes a payload into the right handler."""
     ctx = FakeCtx()
     members, checkins, settings, clock = _wire()
-    register_tools(
-        ctx, members=members, checkins=checkins, settings=settings, clock=clock, knowledge=None
-    )
+    register_tools(ctx, members=members, checkins=checkins, settings=settings, clock=clock)
 
     call = next(c for c in ctx.calls if c["name"] == "member_add")
     raw = call["handler"](
@@ -512,4 +483,4 @@ def test_module_imports_with_hermes_absent() -> None:
 
     assert module is hermes_plugin
     assert "hermes" not in sys.modules  # the adapter pulled in no Hermes at import time
-    assert len(TOOL_SPECS) == 9
+    assert len(TOOL_SPECS) == 8

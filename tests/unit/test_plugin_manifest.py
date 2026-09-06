@@ -42,11 +42,11 @@ MANIFEST_SCHEMA: dict[str, object] = {
         # standalone is the only kind the general PluginManager loads for user plugins.
         "kind": {"const": "standalone"},
         "provides_tools": {
-            # 9 tools since v6.1 (T2.20): the two-call knowledge_sync tool was removed;
-            # sync is the deterministic script (scripts/sync_knowledge.py, rule 11).
+            # 8 tools since v7 (T2.28): knowledge_search deleted — the agent reads its
+            # own docs/ files directly (file tools / ripgrep); proposal §12.
             "type": "array",
-            "minItems": 9,
-            "maxItems": 9,
+            "minItems": 8,
+            "maxItems": 8,
             "uniqueItems": True,
             "items": {"type": "string", "pattern": r"^[a-z][a-z_]*$"},
         },

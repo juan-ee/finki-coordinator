@@ -18,8 +18,6 @@ _REQUIRED_KEY_RE = re.compile(r"'(.+)' is a required property")
 _ADDITIONAL_KEY_RE = re.compile(r"\('(.+?)' was unexpected\)")
 # Top-level sections _build_config indexes; a permissive schema must still fail clean here.
 _REQUIRED_SECTIONS = ("project", "telegram", "model", "rag", "log_level")
-DEFAULT_FRESHNESS_TTL_MINUTES = 10
-"""The documented knowledge.freshness_ttl_minutes default (T2.23, proposal sec 3)."""
 
 
 class ConfigError(Exception):
@@ -60,13 +58,6 @@ class RagConfig:
 
 
 @dataclass(frozen=True)
-class KnowledgeConfig:
-    """Knowledge-cache knobs: the read-through freshness TTL for knowledge_search."""
-
-    freshness_ttl_minutes: int
-
-
-@dataclass(frozen=True)
 class Config:
     """The whole validated boot configuration, mirroring config.schema.json."""
 
@@ -74,7 +65,6 @@ class Config:
     telegram: TelegramConfig
     model: ModelConfig
     rag: RagConfig
-    knowledge: KnowledgeConfig
     log_level: str
 
 
@@ -111,18 +101,6 @@ def _build_config(data: object) -> Config:
     telegram = cast(dict[str, object], data_map["telegram"])
     model = cast(dict[str, object], data_map["model"])
     rag = cast(dict[str, object], data_map["rag"])
-    # The knowledge section is OPTIONAL (configs predating T2.23 stay valid): a missing
-    # section means the documented default TTL. The schema enforces the shape when the
-    # section is present; the bounds check below is the loader's defensive backstop.
-    knowledge_raw = data_map.get("knowledge", {})
-    if not isinstance(knowledge_raw, dict):
-        raise ConfigError(f"knowledge: expected a mapping; got {type(knowledge_raw).__name__}")
-    knowledge = cast(dict[str, object], knowledge_raw)
-    ttl_raw = knowledge.get("freshness_ttl_minutes", DEFAULT_FRESHNESS_TTL_MINUTES)
-    if isinstance(ttl_raw, bool) or not isinstance(ttl_raw, int) or ttl_raw < 1:
-        raise ConfigError(
-            f"knowledge.freshness_ttl_minutes: must be an integer >= 1; got {ttl_raw!r}"
-        )
     return Config(
         project=ProjectConfig(
             name=cast(str, project["name"]),
@@ -139,7 +117,6 @@ def _build_config(data: object) -> Config:
             chunk_size=cast(int, rag["chunk_size"]),
             embed_model=cast(str, rag["embed_model"]),
         ),
-        knowledge=KnowledgeConfig(freshness_ttl_minutes=ttl_raw),
         log_level=cast(str, data_map["log_level"]),
     )
 

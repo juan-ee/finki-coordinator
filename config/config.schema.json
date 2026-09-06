@@ -72,18 +72,6 @@
         }
       }
     },
-    "knowledge": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [],
-      "properties": {
-        "freshness_ttl_minutes": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "Read-through gate on knowledge_search: after this many minutes the next search refreshes the cache via the deterministic sync (default 10)."
-        }
-      }
-    },
     "log_level": {
       "type": "string"
     }

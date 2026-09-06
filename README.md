@@ -2,9 +2,10 @@
 
 A clonable template that boots a **Telegram-based async project coordinator** on a
 Raspberry Pi 5: a Python coordinator plugin (SQLite-backed members, check-ins, and
-settings with UTC-anchored, timezone-safe cron scheduling), a Google Shared Drive
-knowledge base managed through Hermes' built-in google-workspace skill ($GAPI) with a
-local SQLite FTS5 index, and an OpenExecutive-derived operator persona.
+settings with UTC-anchored, timezone-safe cron scheduling), a Pi-local knowledge base
+(`data/project/docs/` — git-versioned, rendered to a static site) with Google Drive
+demoted to daily backup + document inbox through Hermes' built-in google-workspace
+skill ($GAPI), and an OpenExecutive-derived operator persona.
 
 > 🚧 Under active development — Phase 0 (foundation), Phase 1 (core bot), and the
 > v6 Phase-2 restructure (member lifecycle + knowledge) are implemented; the Phase-2
@@ -13,9 +14,9 @@ local SQLite FTS5 index, and an OpenExecutive-derived operator persona.
 
 ## What you get
 
-- **9 coordinator tools** in every bot session: `member_add`, `member_update`,
+- **8 coordinator tools** in every bot session: `member_add`, `member_update`,
   `member_list`, `member_delete` (owner-only), `checkin_submit`, `checkins_by_date`,
-  `setting_get`, `setting_set`, `knowledge_search` (FTS5 over the cache).
+  `setting_get`, `setting_set`.
 - **Timezone-safe scheduling** — each member's local wake time becomes a UTC cron entry
   (08:00 in Quito → `0 13 * * *`), computed in pure Python (`src/coordinator/scheduling.py`),
   never by the LLM. DST is resolved at schedule-computation time from an explicit instant.
@@ -25,17 +26,17 @@ local SQLite FTS5 index, and an OpenExecutive-derived operator persona.
   inherits the pin (the drift guard), `TELEGRAM_ALLOWED_USERS` as a static DM gate, model
   choice reserved to the owner.
 - **Runtime `AGENTS.md`** — generated from the roster DB and injected into every session;
-  its query map: mission → the Drive brief first, project questions → `knowledge_search`
-  (then confirm against the live Drive file), status → `journal/` + `checkins_by_date`,
+  its query map: mission → `docs/product/brief.md` first, project questions → search
+  the `docs/` files directly, status → `journal/` + `checkins_by_date`,
   tasks → the `kanban_*` tools.
 - **Check-in & digest skills**, an operator persona (`prompts/persona.md` → `SOUL.md`),
   and a kanban board driven through Hermes' built-in tools.
-- **Google Shared Drive knowledge base (v6.1)** — the agent is the team's librarian:
-  a deterministic sync script (`scripts/sync_knowledge.py` — `make sync` + a nightly
-  `hermes cron` job, no LLM in the data path) incrementally caches Drive documents
-  into a local FTS5 index, `knowledge_search` finds the right document, and
-  agent-authored journals are uploaded back via `$GAPI drive upload`. No rclone, no
-  mirror, no host crontab.
+- **Pi-local knowledge base (v7)** — the record is `data/project/docs/` on the Pi,
+  its own git repo (the safety net), rendered by MkDocs Material to a static site.
+  Google Drive is backup + inbox only: a daily 03:00 UTC agent job pushes `docs/` to
+  Drive `knowledge_base/`, and humans drop documents into Drive `input/` for the
+  agent to ingest (read → synthesize → write `docs/` → move to `processed/`).
+  No rclone, no mirror, no sync script, no FTS5 cache.
 
 ## How it fits together
 
@@ -45,8 +46,8 @@ Telegram ⇄ hermes-agent gateway (Docker, network_mode: host — long-poll, no 
               ├─ coordinator plugin (this repo, src/coordinator — mounted read-only)
               │     └─ SQLite: data/hermes/hermes-coord.db (members / checkins / settings)
               ├─ cron: UTC-anchored jobs, cron.model pinned (jobs inherit)
-              └─ Google Drive ⇄ $GAPI (sync script / knowledge_search / upload)
-                    local FTS5 cache: hermes-coord.db · data/project/ = agent workspace
+              └─ Pi-local record: data/project/docs/ (git) → mkdocs site ·
+                 Drive = daily backup + inbox via $GAPI (no sync script, no cache)
 ```
 
 The compose file builds
@@ -63,7 +64,7 @@ plugin, never per job.
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather)) + your numeric user ID.
 - An [OpenRouter](https://openrouter.ai/keys) API key **with a per-key credit limit** —
   that limit is the money valve.
-- A Google account that can reach the team's Shared Drive folder — the agent connects
+- A dedicated Google account for the Drive backup + inbox — the agent connects
   in-container via Hermes' built-in google-workspace skill ($GAPI); no local OAuth files.
 - [`uv`](https://docs.astral.sh/uv/) — runs the host-side setup scripts and the dev suite.
 

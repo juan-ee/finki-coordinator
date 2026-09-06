@@ -10,33 +10,9 @@ _SCHEMA_SQL_PATH = Path(__file__).with_name("schema.sql")
 # A migration is an SQL script (run via executescript) or a callable run against the
 # connection. Callables exist for guarded schema surgery plain SQL cannot express:
 # the status_days drop (D4) must tolerate fresh v6 stores whose migration 001 never
-# created the column, which SQLite has no conditional DDL form for.
+# created the column, and the v7 knowledge-cache drop (T2.28) must tolerate fresh v7
+# stores whose 001 never created those tables — SQLite has no conditional DDL form.
 MigrationScript = str | Callable[[sqlite3.Connection], None]
-
-# Migration 003 (D2): the knowledge cache + external-content FTS5 index. IF NOT EXISTS
-# forms — fresh stores create these tables in 001 (schema.sql carries the same DDL) and
-# no-op here; stores that predate the knowledge subsystem create them here. The engine
-# sees identical columns on both paths (convergence pinned by tests/test_db.py).
-_KNOWLEDGE_DDL = """
-CREATE TABLE IF NOT EXISTS knowledge (
-  chunk_id       INTEGER PRIMARY KEY,
-  file_id        TEXT NOT NULL,
-  path           TEXT NOT NULL,
-  title          TEXT NOT NULL,
-  heading        TEXT,
-  body           TEXT NOT NULL,
-  modified_time  TEXT NOT NULL,
-  fetched_at     TEXT NOT NULL,
-  UNIQUE(file_id, heading)
-);
-CREATE INDEX IF NOT EXISTS knowledge_file ON knowledge(file_id);
-CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
-  title, body,
-  content='knowledge',
-  content_rowid='chunk_id',
-  tokenize='unicode61 remove_diacritics 2'
-);
-"""
 
 
 def _migrate_002_drop_status_days(conn: sqlite3.Connection) -> None:
@@ -47,6 +23,20 @@ def _migrate_002_drop_status_days(conn: sqlite3.Connection) -> None:
     # Unguarded by design: deleting an absent key's row is a no-op, so fresh v6 stores
     # stay untouched while v5 upgrade stores shed the dropped dial's stored row.
     conn.execute("DELETE FROM settings WHERE key = 'digest_time'")
+
+
+def _migrate_004_drop_knowledge_cache(conn: sqlite3.Connection) -> None:
+    """Drop the v6.1 knowledge cache + FTS index and the freshness stamp (v7, T2.28).
+
+    The cache was never the record (the Pi-local docs/ folder is, proposal §3/§12); the
+    teardown removes its tables and the read-gate's settings stamp. IF EXISTS DROPs:
+    fresh v7 stores never created the tables, so the migration is a no-op there.
+    """
+    conn.execute("DROP TABLE IF EXISTS knowledge_fts")
+    conn.execute("DROP TABLE IF EXISTS knowledge")
+    # The freshness gate's debounce stamp (deliberately outside repositories.DEFAULTS)
+    # is dead state once the gate is gone.
+    conn.execute("DELETE FROM settings WHERE key = 'knowledge_last_freshness_check'")
 
 
 # Worker threads share the one runtime connection (see connect() below): SQLite's
@@ -61,11 +51,14 @@ WRITE_TRANSACTION_LOCK = threading.RLock()
 
 # Static ordered migrations; 001 applies the full schema.sql DDL (proposal.md §1);
 # 002 drops the v5 status_days column and purges the stored digest_time setting
-# (both no-ops on fresh v6 stores — they converge); 003 adds the knowledge cache (D2).
+# (both no-ops on fresh v6 stores — they converge); 004 drops the v6.1 knowledge
+# cache + FTS index (T2.28 — the v7 teardown). 003 is retired: fresh stores never
+# create the cache because 001 no longer carries its DDL; existing v6.1 stores that
+# already recorded version 3 keep that marker and lose the tables in 004.
 _MIGRATIONS: tuple[tuple[int, MigrationScript], ...] = (
     (1, _SCHEMA_SQL_PATH.read_text(encoding="utf-8")),
     (2, _migrate_002_drop_status_days),
-    (3, _KNOWLEDGE_DDL),
+    (4, _migrate_004_drop_knowledge_cache),
 )
 
 

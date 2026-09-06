@@ -59,19 +59,9 @@ def _negative_chunk_size(config: dict) -> None:
     config["rag"]["chunk_size"] = -1
 
 
-def _unknown_knowledge_key(config: dict) -> None:
-    """Mutation: add an unknown key inside the knowledge section."""
-    config["knowledge"] = {"freshness_ttl_minutes": 10, "stale": True}
-
-
-def _freshness_ttl_as_string(config: dict) -> None:
-    """Mutation: make knowledge.freshness_ttl_minutes a string."""
-    config["knowledge"] = {"freshness_ttl_minutes": "10"}
-
-
-def _freshness_ttl_zero(config: dict) -> None:
-    """Mutation: make knowledge.freshness_ttl_minutes zero (must be >= 1)."""
-    config["knowledge"] = {"freshness_ttl_minutes": 0}
+def _knowledge_section_still_present(config: dict) -> None:
+    """Mutation (T2.28): resurrect the deleted knowledge section — unknown top-level key."""
+    config["knowledge"] = {"freshness_ttl_minutes": 10}
 
 
 @pytest.mark.parametrize(
@@ -82,9 +72,7 @@ def _freshness_ttl_zero(config: dict) -> None:
         _unknown_top_level_key,
         _non_iana_timezone,
         _negative_chunk_size,
-        _unknown_knowledge_key,
-        _freshness_ttl_as_string,
-        _freshness_ttl_zero,
+        _knowledge_section_still_present,
     ],
     ids=[
         "missing-model.default_model",
@@ -92,9 +80,7 @@ def _freshness_ttl_zero(config: dict) -> None:
         "unknown-top-level-key",
         "timezone-not-iana-looking",
         "rag.chunk_size-negative",
-        "knowledge.unknown-key",
-        "knowledge.freshness_ttl_minutes-as-string",
-        "knowledge.freshness_ttl_minutes-zero",
+        "knowledge-section-deleted-still-present",
     ],
 )
 def test_invalid_variant_rejected(

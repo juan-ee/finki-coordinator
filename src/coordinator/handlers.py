@@ -13,8 +13,7 @@ the actionable one-line summary in "summary" and empty "data".
 """
 
 import re
-from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime
 from typing import Protocol, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -22,8 +21,6 @@ from . import scheduling
 from .repositories import (
     DEFAULTS,
     CheckinsRepository,
-    KnowledgeRepository,
-    KnowledgeSearchError,
     MembersRepository,
     SettingsRepository,
 )
@@ -52,7 +49,6 @@ _SUBMIT_FIELDS = frozenset({"member_id", "date", "done", "next", "blockers", "so
 _DATE_FIELDS = frozenset({"date"})
 _KEY_FIELDS = frozenset({"key"})
 _SET_FIELDS = frozenset({"key", "value"})
-_SEARCH_FIELDS = frozenset({"query", "limit"})
 
 
 class Clock(Protocol):
@@ -61,54 +57,6 @@ class Clock(Protocol):
     def now(self) -> datetime:
         """Return the current timezone-aware UTC instant."""
         ...
-
-
-@dataclass(frozen=True)
-class FreshnessOutcome:
-    """One freshness refresh attempt's report (counts/reasons only — rule 11)."""
-
-    status: str  # "refreshed" | "degraded"
-    detail: str  # the sync script's counts line, or the failure reason when degraded
-
-
-class KnowledgeFreshness(Protocol):
-    """Read-through freshness seam for knowledge_search (rule 5: I/O behind a Protocol).
-
-    ttl_minutes carries the wired config knob; last_check returns the stored ISO
-    instant of the last freshness attempt (None = never checked); refresh runs the
-    deterministic incremental sync and stamps the attempt. Degraded outcomes report
-    status="degraded" and let the search serve the cache — reading never hard-fails."""
-
-    def ttl_minutes(self) -> int:
-        """Return the configured freshness TTL in minutes."""
-        ...
-
-    def last_check(self) -> str | None:
-        """Return the last attempt's ISO stamp, or None when never attempted."""
-        ...
-
-    def refresh(self, now: str) -> FreshnessOutcome:
-        """Run the deterministic incremental sync and stamp the attempt with now."""
-        ...
-
-
-def freshness_due(last_check: str | None, now: datetime, ttl_minutes: int) -> bool:
-    """Pure TTL decision: True when the cache must be refreshed before matching.
-
-    Due means never checked, an unparseable stamp, or now at/after
-    last_check + ttl_minutes (the boundary is inclusive, so searches strictly inside
-    the window debounce). A naive stamp is read as UTC (the cache is UTC-anchored);
-    a corrupt one cannot prove freshness and fails open to a refresh.
-    """
-    if last_check is None:
-        return True
-    try:
-        parsed = datetime.fromisoformat(last_check)
-    except ValueError:
-        return True
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
-    return now >= parsed + timedelta(minutes=ttl_minutes)
 
 
 def _result(
@@ -635,95 +583,3 @@ def _setting_value_error(key: str, value: str) -> str | None:
             )
         return None
     return None
-
-
-def knowledge_search(
-    payload: dict[str, object],
-    members: MembersRepository,
-    checkins: CheckinsRepository,
-    settings: SettingsRepository,
-    clock: Clock,
-    knowledge: KnowledgeRepository,
-    freshness: KnowledgeFreshness | None = None,
-) -> dict[str, object]:
-    """Search the local knowledge cache (FTS5) - a finding aid, not the record (D2).
-
-    Read-through freshness gate (T2.23, proposal section 3): when a freshness seam is
-    wired and the cache is due (pure freshness_due on the injected Clock), the
-    deterministic incremental sync runs FIRST, then the search proceeds on the
-    refreshed cache. Searches strictly inside the TTL window debounce (no re-check);
-    a degraded refresh (Drive unreachable) still serves the cache with the
-    degradation named in the summary - reading never hard-fails. Payload validation
-    (unknown fields, missing/empty query, bad limit, control characters) runs before
-    the gate, so a rejected query never triggers a refresh; FTS5-syntax errors are
-    search-time and stay post-gate.
-
-    Returns the top chunks (file_id/path/title/heading) ordered by bm25 with the
-    title weighted 10:1 over the body; the agent confirms against the LIVE Drive
-    original (via $GAPI) before quoting. limit defaults to 3 and is capped at 10.
-    A query containing a C0 control character (NUL, tab, newline, ...) is rejected
-    up front with ok:False: FTS5 MATCH silently truncates at an embedded NUL, so
-    'alpha\\x00nomatchxyz' would match on plain 'alpha'. A malformed query surfaces
-    as ok:False, never as a raw sqlite error.
-    """
-    del members, checkins, settings  # uniform handler signature; the cache is external
-    error = _reject_unknown(payload, _SEARCH_FIELDS) or _require_str(payload, "query")
-    if error is not None:
-        return _fail(error)
-    limit = payload.get("limit")
-    if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int)):
-        return _fail("field 'limit' must be an integer")
-    if limit is not None and limit < 1:
-        return _fail("field 'limit' must be >= 1")
-    query = cast("str", payload["query"])
-    effective = 3 if limit is None else min(limit, 10)
-    # B2 guard: FTS5 MATCH silently truncates at an embedded NUL (C-string semantics),
-    # so 'alpha\x00nomatchxyz' would return hits for plain 'alpha' - reject every C0
-    # control character (< 0x20) before the query ever reaches the repo.
-    control = next((ch for ch in query if ord(ch) < 0x20), None)
-    if control is not None:
-        return _fail(
-            f"search failed: query contains control character U+{ord(control):04X}"
-            " - plain words work best (the query is an FTS5 MATCH)"
-        )
-    refreshed_note = ""
-    degraded_note = ""
-    if freshness is not None:
-        try:
-            due = freshness_due(freshness.last_check(), clock.now(), freshness.ttl_minutes())
-            outcome = None
-            if due:
-                outcome = freshness.refresh(clock.now().isoformat())
-        except Exception as exc:  # noqa: BLE001 - reading never hard-fails (T2.23)
-            outcome = FreshnessOutcome("degraded", f"{type(exc).__name__}: {exc}")
-        if outcome is not None:
-            if outcome.status == "degraded":
-                degraded_note = outcome.detail
-            else:
-                refreshed_note = outcome.detail
-    try:
-        hits = knowledge.search(query, effective)
-    except KnowledgeSearchError as exc:
-        return _fail(f"search failed: {exc} - plain words work best (the query is an FTS5 MATCH)")
-    data: dict[str, object] = {
-        "query": query,
-        "results": [
-            {
-                "file_id": hit.file_id,
-                "path": hit.path,
-                "title": hit.title,
-                "heading": hit.heading,
-            }
-            for hit in hits
-        ],
-    }
-    base = f"{len(hits)} hit(s) for {query!r}"
-    if degraded_note:
-        summary = (
-            f"{base} - freshness check FAILED ({degraded_note}); serving the possibly-stale cache"
-        )
-    elif refreshed_note:
-        summary = f"{base} (cache refreshed: {refreshed_note})"
-    else:
-        summary = base
-    return _result(True, summary, None, data)

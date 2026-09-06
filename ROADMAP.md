@@ -56,7 +56,7 @@ knowledge_search) is deleted. Invariants: **git safety net · synthesis-vs-copy-
   description → backup/inbox root. Acceptance: `make check`; grep proves no live doc
   (changelogs/gate history excepted) still claims "Drive is the record" or mentions
   `knowledge_fts`.
-- [ ] **T2.28 — delete the Drive→cache sync machinery** *(tests first: rewrite the
+- [x] **T2.28 — delete the Drive→cache sync machinery** *(tests first: rewrite the
   affected tests to the v7 shape, watch them fail)* — remove
   `scripts/sync_knowledge.py`, `src/coordinator/syncing.py`, the `knowledge`/
   `knowledge_fts` DDL from `schema.sql`, `KnowledgeRepo`, the `knowledge_search` spec
@@ -182,3 +182,34 @@ Log new judgement calls and residuals here, newest first.
   covers text search") and §8 first-boot step 11 (creates the v6.1 knowledge-sync
   cron) still describe v6.1 machinery — unowned by any Phase 2.5 task; recorded, not
   actioned (rule 8).
+
+- 2026-09-06 (T2.28): tests rewritten to the v7 shape FIRST (15 red), then the
+  machinery deleted. Judgement calls: (a) `src/coordinator/knowledge.py` (the FTS5
+  chunker) is deleted with the cache indirection — its only consumers were the deleted
+  sync path and KnowledgeRepo (proposal §12 "the cache/FTS5 indirection is deleted");
+  (b) migration 003 is retired and a **migration 004 teardown** drops
+  `knowledge`/`knowledge_fts` + the `knowledge_last_freshness_check` stamp on
+  existing stores (the cache is not the record; fresh v7 stores record 1, 2, 4);
+  (c) the `/opt/data/config` compose mount is removed — it existed only for the T2.23
+  freshness TTL knob; (d) the T2.26 incident message in setup.sh reworded (the sync
+  script's pre-flight no longer exists); (e) T2.28's grep-clean is scoped to the
+  machinery's own surfaces (src/ scripts/ Makefile compose docker/ config/
+  knowledge-SKILL plugin.yaml tests/ .env.example) — remaining tracked-file hits are
+  the deletion guards + teardown statements themselves, plus the documented
+  transitional files (`scripts/generate_agents_md.py` + its test pins and
+  `prompts/persona.md` rule 6 → T2.29; README "no FTS5 cache" negation → T2.34
+  rewrite). Census: TOOL_SPECS registers exactly 8 tools; suite 286 passed.
+  **Review verdicts (fresh dual-axis, fixed point d253f93):** Spec — no hard
+  violations; all named deletions verified gone, 8-tool census confirmed; scope-creep
+  flags (README truthfulness edits, migration 004 teardown, docker/README jobs note)
+  all ruled justified fallout of the deletion and of the grep-clean acceptance.
+  Standards — no hard violations; one flag arbitrated as a **judgement call, not a
+  hard violation**: persona.md rule 6 / generate_agents_md.py still reference the
+  deleted tool under a literal repo-wide reading of "grep clean" — arbitrated on the
+  phase's own task order (T2.29 owns persona + generator prompts; editing them here
+  would itself be scope creep), with the residual runtime risk (a stale generated
+  AGENTS.md naming a deleted tool until T2.29 regenerates it) recorded here and for
+  the owner. Small fix applied on the delta: docker/README no longer names the
+  not-yet-existing backup skill file (T2.32 lands it). Smell notes accepted as-is:
+  the v6.1-shaped test fixture re-declares v6 DDL deliberately (pinned historical
+  snapshot for the 004 teardown test).

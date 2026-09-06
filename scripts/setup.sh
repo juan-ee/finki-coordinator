@@ -303,8 +303,8 @@ step_check_google_token() {
       else
         echo "  WARNING: owner $owner, mode $mode — NOT writable by uid $container_uid."
         echo "  Every token refresh write by the runtime user fails in this state"
-        echo "  (the 2026-09-05 root-owned-token incident; sync_knowledge.py's"
-        echo "  pre-flight and the gws CLI both hit it)."
+        echo "  (the 2026-09-05 root-owned-token incident; the gws CLI's token"
+        echo "  refresh writes hit it)."
         if [[ "$owner" -eq "$container_uid" ]]; then
           remedy="chmod 600 $token_path"
         else

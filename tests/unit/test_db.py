@@ -92,7 +92,7 @@ def test_migrate_records_versions_with_the_passed_timestamp(tmp_path: pathlib.Pa
         assert [(row["version"], row["applied_at"]) for row in rows] == [
             (1, FIXED_APPLIED_AT),
             (2, FIXED_APPLIED_AT),
-            (3, FIXED_APPLIED_AT),
+            (4, FIXED_APPLIED_AT),
         ]
     finally:
         conn.close()
@@ -110,7 +110,7 @@ def test_migrate_is_idempotent_on_double_call(tmp_path: pathlib.Path) -> None:
         assert [(row["version"], row["applied_at"]) for row in rows] == [
             (1, FIXED_APPLIED_AT),
             (2, FIXED_APPLIED_AT),
-            (3, FIXED_APPLIED_AT),
+            (4, FIXED_APPLIED_AT),
         ]
     finally:
         conn.close()
@@ -216,29 +216,17 @@ def test_fresh_and_upgrade_paths_converge(tmp_path: pathlib.Path) -> None:
         # the v5 fixture's stored DDL differs from schema.sql's in comments and
         # whitespace. (ALTER TABLE DROP COLUMN itself does rewrite the stored text,
         # so the upgrade path's members DDL is pinned below to carry no status_days.)
-        for table in ("members", "checkins", "settings", "knowledge"):
+        for table in ("members", "checkins", "settings"):
             assert _column_names(upgraded, table) == _column_names(fresh, table)
-        # The knowledge DDL exists in TWO copies (schema.sql 001 vs db.py 003): the
-        # v5 fixture + migrate path builds it from 003 alone, so its columns are
-        # pinned here against the exact 001 declaration order — the two copies
-        # cannot drift apart silently.
-        assert _column_names(upgraded, "knowledge") == [
-            "chunk_id",
-            "file_id",
-            "path",
-            "title",
-            "heading",
-            "body",
-            "modified_time",
-            "fetched_at",
-        ]
-        # The external-content FTS5 index must exist on both paths (FTS5 virtual
-        # tables appear in sqlite_master with type = 'table').
+        # v7 (T2.28): the knowledge cache is gone from BOTH paths — fresh stores never
+        # create it (001 no longer carries the DDL) and v6.1 stores shed it in 004.
         for store in (upgraded, fresh):
-            fts = store.execute(
-                "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'knowledge_fts'"
-            ).fetchone()
-            assert fts is not None and fts[0] == 1
+            names = {
+                str(row["name"])
+                for row in store.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            }
+            assert "knowledge" not in names
+            assert "knowledge_fts" not in names
         upgraded_tables = {
             str(row["name"])
             for row in upgraded.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -259,6 +247,118 @@ def test_fresh_and_upgrade_paths_converge(tmp_path: pathlib.Path) -> None:
     finally:
         upgraded.close()
         fresh.close()
+
+
+# --- migration 004: the v6.1 -> v7 knowledge-cache drop (T2.28, proposal §12) ------------
+
+
+def _create_v61_shaped_schema(conn: sqlite3.Connection, applied_at: str) -> None:
+    """Create the v6.1-shaped store (knowledge cache + FTS5, versions 1-3 applied)."""
+    conn.executescript(
+        f"""
+        CREATE TABLE members (
+          id          INTEGER PRIMARY KEY,
+          name        TEXT NOT NULL,
+          telegram_id INTEGER UNIQUE,
+          timezone    TEXT NOT NULL DEFAULT 'UTC',
+          wake        TEXT,
+          role        TEXT,
+          active      INTEGER DEFAULT 1,
+          created_at  TEXT, updated_at TEXT
+        );
+        CREATE TABLE checkins (
+          id         INTEGER PRIMARY KEY,
+          member_id  INTEGER REFERENCES members(id),
+          date       TEXT NOT NULL,
+          done       TEXT, next TEXT, blockers TEXT,
+          source     TEXT DEFAULT 'auto',
+          created_at TEXT,
+          UNIQUE(member_id, date)
+        );
+        CREATE TABLE settings (
+          key   TEXT PRIMARY KEY,
+          value TEXT
+        );
+        CREATE TABLE knowledge (
+          chunk_id       INTEGER PRIMARY KEY,
+          file_id        TEXT NOT NULL,
+          path           TEXT NOT NULL,
+          title          TEXT NOT NULL,
+          heading        TEXT,
+          body           TEXT NOT NULL,
+          modified_time  TEXT NOT NULL,
+          fetched_at     TEXT NOT NULL,
+          UNIQUE(file_id, heading)
+        );
+        CREATE VIRTUAL TABLE knowledge_fts USING fts5(
+          title, body,
+          content='knowledge',
+          content_rowid='chunk_id',
+          tokenize='unicode61 remove_diacritics 2'
+        );
+        CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT);
+        INSERT INTO schema_migrations (version, applied_at) VALUES
+          (1, '{applied_at}'), (2, '{applied_at}'), (3, '{applied_at}');
+        """
+    )
+    conn.commit()
+
+
+def test_migration_004_drops_the_v61_knowledge_cache(tmp_path: pathlib.Path) -> None:
+    """Upgrade path: a v6.1 store loses the knowledge cache + FTS index and the
+    freshness stamp row; roster rows survive (v7 teardown — the cache is not the
+    record, the Pi-local docs/ folder is)."""
+    conn = connect(tmp_path / "upgrade61.db")
+    _create_v61_shaped_schema(conn, FIXED_APPLIED_AT)
+    conn.execute("INSERT INTO members (id, name) VALUES (1, 'Alice')")
+    conn.execute(
+        "INSERT INTO knowledge (file_id, path, title, body, modified_time, fetched_at)"
+        " VALUES ('f1', 'docs/x.md', 'X', 'body', '2026-09-05T00:00:00Z',"
+        " '2026-09-05T00:00:00Z')"
+    )
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES ('knowledge_last_freshness_check',"
+        " '2026-09-05T00:00:00+00:00')"
+    )
+    conn.commit()
+
+    migrate(conn, applied_at=FIXED_APPLIED_AT)
+
+    try:
+        names = {
+            str(row["name"])
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
+        assert "knowledge" not in names
+        assert "knowledge_fts" not in names
+        row = conn.execute("SELECT name FROM members WHERE id = 1").fetchone()
+        assert row is not None and row["name"] == "Alice"
+        stamp = conn.execute(
+            "SELECT value FROM settings WHERE key = 'knowledge_last_freshness_check'"
+        ).fetchone()
+        assert stamp is None
+        versions = [
+            int(r["version"]) for r in conn.execute("SELECT version FROM schema_migrations")
+        ]
+        assert versions == [1, 2, 3, 4]
+    finally:
+        conn.close()
+
+
+def test_migration_004_is_a_noop_on_a_fresh_v7_schema(tmp_path: pathlib.Path) -> None:
+    """Fresh path: 001 never created the knowledge tables, so 004 must not raise."""
+    conn = connect(tmp_path / "fresh.db")
+
+    migrate(conn, applied_at=FIXED_APPLIED_AT)
+
+    try:
+        names = {
+            str(row["name"])
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
+        assert {"members", "checkins", "settings"} <= names
+    finally:
+        conn.close()
 
 
 def test_checkins_unique_constraint_on_member_and_date(tmp_path: pathlib.Path) -> None:

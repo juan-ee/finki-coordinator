@@ -1,11 +1,10 @@
-"""SQLite repositories for members, checkins, settings and the knowledge cache."""
+"""SQLite repositories for members, checkins and settings."""
 
 import sqlite3
 from dataclasses import dataclass
 from typing import Protocol
 
 from .db import WRITE_TRANSACTION_LOCK
-from .knowledge import Chunk
 
 _MEMBER_COLUMNS = (
     "SELECT id, name, telegram_id, timezone, wake, role, active, "
@@ -127,50 +126,6 @@ class SettingsRepository(Protocol):
 
     def set(self, key: str, value: str) -> None:
         """Insert or overwrite the stored value for key."""
-        ...
-
-
-class KnowledgeSearchError(Exception):
-    """Raised when an FTS5 MATCH query is malformed (translated at the tool layer)."""
-
-
-@dataclass(frozen=True)
-class KnowledgeHit:
-    """One search result: the cached chunk's locator (rank is bm25, lower = better)."""
-
-    chunk_id: int
-    file_id: str
-    path: str
-    title: str
-    heading: str | None
-    rank: float
-
-
-class KnowledgeRepository(Protocol):
-    """Handler-facing contract for the knowledge cache (Drive is the record; D2)."""
-
-    def replace_file(
-        self,
-        *,
-        file_id: str,
-        path: str,
-        title: str,
-        modified_time: str,
-        fetched_at: str,
-        chunks: list[Chunk],
-    ) -> int:
-        """Rewrite one file's cache rows and FTS entries; return the chunk count."""
-        ...
-
-    def watermark(self) -> str | None:
-        """Return MAX(modified_time) over cached rows (None when the cache is empty)."""
-        ...
-
-    def search(self, query: str, limit: int) -> list[KnowledgeHit]:
-        """Return the top FTS5 hits (bm25, title 10:1 over body) for the query.
-
-        Raises KnowledgeSearchError when the query is not a valid FTS5 MATCH query.
-        """
         ...
 
 
@@ -391,104 +346,3 @@ class SettingsRepo:
             (key, value),
         )
         self._conn.commit()
-
-
-class KnowledgeRepo:
-    """SQLite-backed knowledge cache with an external-content FTS5 index (D2).
-
-    The sync owns ALL writes to knowledge/knowledge_fts: per-file reindex is
-    FTS delete -> row delete -> row insert -> FTS insert, under the shared write
-    lock, one commit. Drive is the record; every row is rebuildable from it.
-    """
-
-    def __init__(self, conn: sqlite3.Connection) -> None:
-        """Bind the repository to an open, migrated connection."""
-        self._conn = conn
-
-    def replace_file(
-        self,
-        *,
-        file_id: str,
-        path: str,
-        title: str,
-        modified_time: str,
-        fetched_at: str,
-        chunks: list[Chunk],
-    ) -> int:
-        """Rewrite one file's cache rows and FTS entries; return the chunk count.
-
-        Any failure - not only sqlite3.Error, e.g. an unencodable value that fails at
-        bind time - rolls the transaction back and re-raises (db.migrate's discipline),
-        so a failed reindex leaves both tables untouched instead of leaving its deletes
-        pending for the next commit on the shared connection to poison.
-        """
-        with WRITE_TRANSACTION_LOCK:
-            try:
-                self._conn.execute(
-                    "DELETE FROM knowledge_fts WHERE rowid IN"
-                    " (SELECT chunk_id FROM knowledge WHERE file_id = ?)",
-                    (file_id,),
-                )
-                self._conn.execute("DELETE FROM knowledge WHERE file_id = ?", (file_id,))
-                for chunk in chunks:
-                    cursor = self._conn.execute(
-                        "INSERT INTO knowledge (file_id, path, title, heading, body,"
-                        " modified_time, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        (
-                            file_id,
-                            path,
-                            title,
-                            chunk.heading,
-                            chunk.body,
-                            modified_time,
-                            fetched_at,
-                        ),
-                    )
-                    self._conn.execute(
-                        "INSERT INTO knowledge_fts(rowid, title, body) VALUES (?, ?, ?)",
-                        (cursor.lastrowid, title, chunk.body),
-                    )
-                self._conn.commit()
-            except BaseException:
-                # Not only sqlite3.Error: a non-sqlite failure (e.g. UnicodeEncodeError
-                # binding a lone surrogate) must roll back too, or the FTS-delete +
-                # row-delete stay pending in an open transaction and the NEXT commit on
-                # the shared connection silently drops a previously indexed file.
-                self._conn.rollback()
-                raise
-        return len(chunks)
-
-    def watermark(self) -> str | None:
-        """Return MAX(modified_time) over cached rows (None when the cache is empty)."""
-        row = self._conn.execute("SELECT MAX(modified_time) AS m FROM knowledge").fetchone()
-        return None if row is None or row["m"] is None else str(row["m"])
-
-    def search(self, query: str, limit: int) -> list[KnowledgeHit]:
-        """FTS5 MATCH ordered by bm25 (title 10:1 over body); top limit hits.
-
-        Raises KnowledgeSearchError when the query is not a valid FTS5 MATCH query
-        (the tool layer translates that into an actionable ok:False result).
-        """
-        try:
-            rows = self._conn.execute(
-                "SELECT k.chunk_id AS chunk_id, k.file_id AS file_id, k.path AS path,"
-                " k.title AS title, k.heading AS heading,"
-                " bm25(knowledge_fts, 10.0, 1.0) AS bm25_rank"
-                " FROM knowledge_fts JOIN knowledge AS k ON k.chunk_id = knowledge_fts.rowid"
-                " WHERE knowledge_fts MATCH ?"
-                " ORDER BY bm25_rank LIMIT ?",
-                (query, limit),
-            ).fetchall()
-        except sqlite3.OperationalError as exc:
-            raise KnowledgeSearchError(f"invalid FTS5 query {query!r}: {exc}") from exc
-        return [
-            KnowledgeHit(
-                chunk_id=int(row["chunk_id"]),
-                file_id=str(row["file_id"]),
-                path=str(row["path"]),
-                title=str(row["title"]),
-                heading=_nullable_str(row, "heading"),
-                rank=float(row["bm25_rank"]),
-            )
-            for row in rows
-        ]

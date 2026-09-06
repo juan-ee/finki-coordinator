@@ -54,28 +54,15 @@ Later `up`s reuse the build cache; a ref bump rebuilds only changed layers.
 |---|---|---|
 | `~/.hermes` | `/opt/data` | Hermes home: `config.yaml`, `SOUL.md` (installed by `scripts/setup.sh`), profiles, sessions, cron state. Survives image updates. |
 | `./src/coordinator` | `/opt/data/plugins/coordinator` (read-only) | Our coordinator plugin, mounted into the user-plugin directory (upstream: user plugins live under `<HERMES_HOME>/plugins/`). |
-| `./data` | `/opt/data/workspace` | Our runtime state: `data/hermes/hermes-coord.db` (members/checkins/settings + knowledge cache) and `data/project/` (the agent workspace — AGENTS.md, journal/, inbox/; authored files are uploaded to Drive via $GAPI, not mirrored). Gitignored; never commit. |
-| `./scripts/sync_knowledge.py` | `/opt/data/scripts/sync_knowledge.py` (read-only) | The deterministic knowledge-sync script (T2.18), at the `~/.hermes/scripts/` path `hermes cron --script` requires — run by the nightly `knowledge-sync` job (T2.19). |
+| `./data` | `/opt/data/workspace` | Our runtime state: `data/hermes/hermes-coord.db` (members/checkins/settings) and `data/project/` (the agent workspace — AGENTS.md, `docs/` = the knowledge record, journal/, inbox/). Gitignored; never commit. |
 
-## The nightly knowledge-sync job (T2.19)
+## Scheduled jobs
 
-The knowledge cache is synced by a scheduled `hermes cron` job that runs the
-deterministic script (proposal §3 DOWN — no LLM in the data path, AGENTS.md hard
-rule 11). Create it once after boot (proposal §8.1 step 11):
-
-```sh
-docker compose exec -T gateway hermes cron create '30 3 * * *' \
-  --name knowledge-sync --script sync_knowledge.py --no-agent
-docker compose exec -T gateway hermes cron list   # shows knowledge-sync
-```
-
-`--script sync_knowledge.py` resolves under `~/.hermes/scripts/` (the read-only
-mount above); `--no-agent` makes the script itself the job — its stdout (counts,
-paths, watermark; never file content) is delivered verbatim, no LLM is invoked, and
-no `cron.model` pin is spent. On demand, run one round with `make sync` (host with
-uv) or `python3 /opt/data/scripts/sync_knowledge.py` (in-container); add `--resync`
-to rebuild the cache from scratch (also purges Drive-side deletions, which the
-modifiedTime watermark structurally misses), `--dry-run` to plan only.
+v7 (T2.28): the v6.1 nightly knowledge-sync job is deleted along with the sync
+machinery (proposal §12) — the knowledge record lives in `data/project/docs/` and
+needs no sync. The v7-era scheduled job is the **daily 03:00 UTC Drive backup**
+(agent cron, T2.32): it commits the docs repo locally, then uploads it to the Drive
+`knowledge_base/` folder (git commit BEFORE upload; failure posts loudly).
 
 `docker compose config` is valid while `data/` does not exist yet — bind mounts
 are only materialized at `up`.
