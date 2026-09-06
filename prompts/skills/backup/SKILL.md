@@ -28,11 +28,16 @@ docs repo is `docs/` from here (the same folder the template calls
    `knowledge_base/` folder if it is missing). Use the google-workspace skill's
    own `drive upload` reference for the exact flag syntax of the pinned CLI — the
    OPERATION is fixed here: one CLI upload call per file, preserving the relative
-   path. Never read file contents into your context to "help" the upload, and never
-   recite documents into chat.
-3. **Verify server-side and count:** list the Drive `knowledge_base/` folder via
+   path. **Never upload `.git/`** — the object store stays local (the file list is
+   exactly `git -C docs ls-files`; a `docs/` upload that sweeps in `.git/` poisons
+   the backup and its count). Never read file contents into your context to "help"
+   the upload, and never recite documents into chat.
+3. **Verify server-side and compare:** list the Drive `knowledge_base/` folder via
    `$GAPI` and count the files there. A local count is NOT evidence — the count you
-   report must come from the Drive listing.
+   report must come from the Drive listing, and it must MATCH the number of files you
+   uploaded (`git -C docs ls-files | wc -l`). A mismatch is a partial upload → take
+   the failure path (loud group post + journal note); never report "ok" with a stale
+   or partial count.
 4. **Post one line to the group:** date + outcome + server-side file count, e.g.
    "Backup 2026-09-07 ok: 14 files in knowledge_base/". If nothing was committed
    (no changes), still verify and post — the count is the proof of record.

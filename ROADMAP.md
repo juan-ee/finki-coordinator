@@ -375,3 +375,28 @@ Log new judgement calls and residuals here, newest first.
   (3) INBOX_SKILL_PATH constant replaces 4 inline paths (Standards smell).
   Scope items (backup SKILL_NAMES pin repair; junk/.archive verdicts; index.md
   guidance) ruled disclosed judgement calls per Notes (a)/(c).
+
+- 2026-09-06 (T2.35 pre-gate RED TEAM, fresh agent, single adversarial charter):
+  **7 real defects found, ALL FIXED in this change set** — (1) BREAKS: backup-cron
+  idempotency used `grep -qw`, and "-" is a word boundary, so a legacy
+  `knowledge-backup-2` job silently suppressed the real 03:00 job → exact-token
+  `grep -E` + regression test; (2) a missing/broken git aborted setup after seeding
+  → git-missing guard + the whole git block moved into `git_setup_docs()` (explicit
+  `|| return 1`, called in a condition context) + regression test; (3) the backup
+  skill would have swept `docs/.git/**` into the Drive upload → teaches
+  `git ls-files` as the upload set, ".git never uploaded" + test assertion;
+  (4) the server-side count was reported but never COMPARED → the skill now teaches
+  count-vs-`git ls-files | wc -l` comparison with mismatch = failure path + test
+  assertion; (5) knowledge/inbox skills mixed repo-root and workdir path frames →
+  the explicit mapping note added to the knowledge skill (docs/ here =
+  data/project/docs/ at repo root); (6) a failing `hermes cron create` aborted
+  setup at the very end → warn-with-remedy branch + broken-shim regression test;
+  (7) the site cron line failed on fresh clones (data/ absent for the log redirect)
+  and grew unbounded → `mkdir -p data` + truncate-per-run in the cron line + test.
+  Could-not-break items recorded: spaced PROJECT_DATA_ROOT/REPO_ROOT paths
+  (code-verified quoted), existing-crontab preservation logic, `make -n` expansion
+  of the site-build recipe, mkdocs .git exclusion design. Residuals: the opt-in
+  fixture test never runs in CI (by design — rule 9; the gate runs it on the Pi);
+  floating image tags (caddy:2, cloudflared:latest) remain an owner pinning
+  decision; the gws CLI's exact upload flags are the runtime google-workspace
+  skill's domain (not invented here).

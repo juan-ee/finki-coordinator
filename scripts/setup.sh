@@ -241,6 +241,35 @@ step_enable_plugin_toolsets() {
   hermes_set "toolsets" '["hermes-cli", "kanban"]'
 }
 
+git_setup_docs() {
+  # Initialize/refresh the docs git repo; returns non-zero when setup failed (the
+  # caller warns). Explicit || return 1 on every git call: the function is invoked
+  # in a condition context, where errexit would be suspended.
+  local docs_dir="$1"
+  local did_init=0
+  if [[ ! -d "$docs_dir/.git" ]]; then
+    git -C "$docs_dir" init >/dev/null || return 1
+    did_init=1
+    echo "  git: initialized $docs_dir (the record's local history)"
+  fi
+  # Identity: set a LOCAL identity only when the operator has none (a global identity
+  # is respected, never overridden — commit attribution stays the operator's).
+  if ! git -C "$docs_dir" config user.name >/dev/null 2>&1; then
+    git -C "$docs_dir" config user.name "Hermes Coordinator" || return 1
+  fi
+  if ! git -C "$docs_dir" config user.email >/dev/null 2>&1; then
+    git -C "$docs_dir" config user.email "coordinator@localhost" || return 1
+  fi
+  # Baseline commit on first boot only: re-runs never commit operator changes —
+  # that is the daily backup job's job, not setup.sh's.
+  if [[ "$did_init" -eq 1 && -n "$(git -C "$docs_dir" status --porcelain)" ]]; then
+    git -C "$docs_dir" add -A || return 1
+    git -C "$docs_dir" -c commit.gpgsign=false commit -q -m "seed: baseline" || return 1
+    echo "  git: baseline commit created"
+  fi
+  return 0
+}
+
 step_seed_project_template() {
   echo "== [7/10] Seed data/project/ from project-template/ (existing files never overwritten) =="
   local template_dir="$REPO_ROOT/project-template"
@@ -283,27 +312,21 @@ step_seed_project_template() {
   # make data/project/docs/ its own git repo, once, committable on a bare machine.
   # The daily 03:00 UTC backup job (T2.32) commits BEFORE it uploads; a repo that
   # cannot commit would violate the invariant this init exists for.
+  # git missing must not abort the script (red team, T2.35): steps 8-10 still run.
+  if ! command -v git >/dev/null 2>&1; then
+    echo "  WARNING: git not found - the docs repo is NOT initialized; install git" >&2
+    echo "  and re-run setup (the daily backup needs it: commit BEFORE upload)." >&2
+    echo "  seeded: $target_root (git setup skipped)"
+    return 0
+  fi
   local docs_dir="$target_root/docs"
-  local did_init=0
-  if [[ ! -d "$docs_dir/.git" ]]; then
-    git -C "$docs_dir" init >/dev/null
-    did_init=1
-    echo "  git: initialized $docs_dir (the record's local history)"
-  fi
-  # Identity: set a LOCAL identity only when the operator has none (a global identity
-  # is respected, never overridden — commit attribution stays the operator's).
-  if ! git -C "$docs_dir" config user.name >/dev/null 2>&1; then
-    git -C "$docs_dir" config user.name "Hermes Coordinator"
-  fi
-  if ! git -C "$docs_dir" config user.email >/dev/null 2>&1; then
-    git -C "$docs_dir" config user.email "coordinator@localhost"
-  fi
-  # Baseline commit on first boot only: re-runs never commit operator changes —
-  # that is the daily backup job's job, not setup.sh's.
-  if [[ "$did_init" -eq 1 && -n "$(git -C "$docs_dir" status --porcelain)" ]]; then
-    git -C "$docs_dir" add -A
-    git -C "$docs_dir" -c commit.gpgsign=false commit -q -m "seed: baseline"
-    echo "  git: baseline commit created"
+  # A missing or broken git must not abort setup after seeding (red team, T2.35):
+  # the failure warns and steps 8-10 still run.
+  if ! git_setup_docs "$docs_dir"; then
+    echo "  WARNING: git setup FAILED - the docs repo is NOT initialized; fix git and" >&2
+    echo "  re-run setup (the daily backup needs it: commit BEFORE upload)." >&2
+    echo "  seeded: $target_root (git setup skipped)"
+    return 0
   fi
 }
 
@@ -370,7 +393,10 @@ step_install_site_cron() {
   echo "== [9/10] Site rebuild cron (every 15 min, UTC — dumb and LLM-free, rule 11) =="
   local marker="# hermes-coordinator: site rebuild (T2.30) — do not edit"
   # Quoted paths: the cron line survives repo locations with spaces.
-  local cron_line="*/15 * * * * cd '${REPO_ROOT}' && make site-build >> '${REPO_ROOT}/data/site-build.log' 2>&1"
+  # mkdir first: on a fresh clone data/ does not exist yet and the >> redirect
+  # would fail before make ever runs (red team, T2.35). Truncate per run: the log
+  # holds the LAST build only (unbounded growth otherwise).
+  local cron_line="*/15 * * * * cd '${REPO_ROOT}' && mkdir -p data && make site-build > 'data/site-build.log' 2>&1"
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "  WOULD install crontab line (idempotent, marker-matched):"
     echo "    $marker"
@@ -433,12 +459,20 @@ step_install_backup_cron() {
     echo "  (check first: docker compose exec gateway hermes cron list  # skip when knowledge-backup exists)"
     return 0
   fi
-  if "$bin" cron list 2>/dev/null | grep -qw "$job_name"; then
+  # Exact-token match: grep -qw treats "-" as a boundary, so a legacy job named
+  # knowledge-backup-2 would wrongly suppress the real job (red team, T2.35).
+  if "$bin" cron list 2>/dev/null | grep -E "(^|[[:space:]])${job_name}([[:space:]]|$)" >/dev/null; then
     echo "  ok: knowledge-backup cron already exists"
     return 0
   fi
-  "$bin" cron create "$schedule" "$prompt" --name "$job_name" --skill coordinator-backup --workdir "$workdir"
-  echo "  created: knowledge-backup (03:00 UTC daily)"
+  # A failing create (broken $bin, CLI error) must not abort the script under set -e
+  # at the very end (red team, T2.35): warn loudly with the manual remedy instead.
+  if "$bin" cron create "$schedule" "$prompt" --name "$job_name" --skill coordinator-backup --workdir "$workdir"; then
+    echo "  created: knowledge-backup (03:00 UTC daily)"
+  else
+    echo "  WARNING: '$bin' cron create FAILED - create the job manually:" >&2
+    echo "    docker compose exec gateway hermes cron create '$schedule' '<prompt>' --name $job_name --skill coordinator-backup --workdir $workdir" >&2
+  fi
 }
 
 step_next_steps() {

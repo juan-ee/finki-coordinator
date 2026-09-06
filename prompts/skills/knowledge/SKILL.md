@@ -7,10 +7,11 @@ category: productivity
 # Skill: knowledge base (docs/ is the record — file-first, no cache)
 
 Use when a question needs team documents, or after authoring a document that belongs in
-the knowledge base. The record is the LOCAL folder `data/project/docs/`
-(git-versioned): you write `.md` files there directly and read them back with your
-file tools. There is NO knowledge cache and NO sync step — plain file search absorbs
-all of it (v7, T2.28).
+the knowledge base. The record is the LOCAL `docs/` folder (git-versioned; the
+template calls it `data/project/docs/` from the repo root — this workspace runs
+with `data/project` as the working directory, so it is `docs/` here): you write
+`.md` files there directly and read them back with your file tools. There is NO
+knowledge cache and NO sync step — plain file search absorbs all of it (v7, T2.28).
 
 ## Reading: search the files directly
 

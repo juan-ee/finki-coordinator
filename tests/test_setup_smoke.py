@@ -717,3 +717,82 @@ def test_backup_cron_create_is_idempotent_when_hermes_cli_present(tmp_path: Path
     log = Path(env["HERMES_SHIM_LOG"]).read_text(encoding="utf-8")
     creates = log.count("ARGS: cron create")
     assert creates == 1, f"expected exactly one create, got {creates}"
+
+
+# --- T2.35 red-team regressions (setup.sh) -----------------------------------------------
+
+
+def test_backup_cron_not_suppressed_by_a_prefix_named_job(tmp_path: Path) -> None:
+    """Red team (T2.35): grep -qw treats '-' as a word boundary, so a pre-existing
+    job named knowledge-backup-2 must NOT suppress creating the real job."""
+    env = _install_hermes_shim(tmp_path / "shim", tmp_path)
+    with open(env["HERMES_SHIM_DB"], "a", encoding="utf-8") as db:
+        db.write("knowledge-backup-2 legacy job\n")
+
+    proc = _run_setup(env)
+
+    assert proc.returncode == 0, f"real run failed:\n{proc.stdout}\n{proc.stderr}"
+    assert "created: knowledge-backup" in proc.stdout, (
+        "a prefix-named job wrongly suppressed the real backup cron"
+    )
+
+
+def test_backup_cron_create_failure_warns_and_script_survives(tmp_path: Path) -> None:
+    """Red team (T2.35): a broken hermes binary must not abort setup under set -e at
+    step 10 - the warning with the manual remedy is printed and setup exits 0."""
+    shim_dir = tmp_path / "shim"
+    shim_dir.mkdir(parents=True, exist_ok=True)
+    broken = shim_dir / "hermes"
+    broken.write_text(
+        "#!/usr/bin/env bash\n"
+        'if [[ "$1" == "cron" && "$2" == "create" ]]; then echo boom >&2; exit 3; fi\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    broken.chmod(0o755)
+    env = _real_mode_env(tmp_path)
+    env["PATH"] = f"{shim_dir}{os.pathsep}{env['PATH']}"
+    env["HERMES_BIN"] = "hermes"
+
+    proc = _run_setup(env)
+
+    assert proc.returncode == 0, f"setup aborted on a failing create:\n{proc.stderr}"
+    # The failure warning goes to stderr (loud operator surface):
+    output = proc.stdout + proc.stderr
+    assert "cron create FAILED" in output
+    assert "docker compose exec gateway hermes cron create" in output
+
+
+def test_docs_git_init_survives_a_missing_git_binary(tmp_path: Path) -> None:
+    """Red team (T2.35): git missing must not abort setup after seeding - the step
+    warns and steps 8-10 still run (token check, both crons)."""
+    env = _real_mode_env(tmp_path)
+    broken_dir = tmp_path / "broken-bin"
+    broken_dir.mkdir(parents=True, exist_ok=True)
+    stub = broken_dir / "git"
+    stub.write_text("#!/usr/bin/env bash\nexit 127\n", encoding="utf-8")
+    stub.chmod(0o755)
+    env["PATH"] = f"{broken_dir}{os.pathsep}{env['PATH']}"
+
+    proc = _run_setup(env)
+
+    assert proc.returncode == 0, f"setup aborted on missing git:\n{proc.stderr}"
+    # The warning goes to stderr (loud operator surface):
+    output = proc.stdout + proc.stderr
+    assert "WARNING: git setup FAILED" in output
+    assert "site rebuild cron" in proc.stdout
+    assert "knowledge-backup" in proc.stdout
+
+
+def test_site_cron_line_survives_a_fresh_clone(tmp_path: Path) -> None:
+    """Red team (T2.35): the installed cron line must mkdir -p data before the
+    redirect (a fresh clone has no data/), and must truncate (not append) the log."""
+    env = _site_cron_env(tmp_path)
+
+    proc = _run_setup(env)
+
+    assert proc.returncode == 0, f"real run failed:\n{proc.stdout}\n{proc.stderr}"
+    log = Path(env["CRONTAB_LOG"]).read_text(encoding="utf-8")
+    assert "mkdir -p data" in log, "the cron line must create data/ before the build"
+    line = next(ln for ln in log.splitlines() if "site-build" in ln and "*/15" in ln)
+    assert ">>" not in line, "the log must be truncated per run (no unbounded growth)"
