@@ -86,7 +86,7 @@ knowledge_search) is deleted. Invariants: **git safety net · synthesis-vs-copy-
   ports" stays true. Tests: `test_compose.py` pin/env discipline. *(The dashboard is
   Hermes' built-in at the pinned ref — the bundled plugins/kanban dashboard tab was
   verified in the pinned source on 2026-09-06; no new code.)*
-- [ ] **T2.32 — daily Drive backup (agent cron, 03:00 UTC)** — skill + hermes cron
+- [x] **T2.32 — daily Drive backup (agent cron, 03:00 UTC)** — skill + hermes cron
   entry: `git -C data/project/docs commit` (invariant 1: commit BEFORE upload), then
   `$GAPI drive upload` of `docs/**` → Drive `knowledge_base/`, with the server-side
   file count reported to the group post. Upload is a CLI file operation (rule 11:
@@ -307,3 +307,36 @@ Log new judgement calls and residuals here, newest first.
   targets updated. Notes (b) corrected accordingly (the "verified upstream at the
   pin" claim referred to the dashboard's existence/tab, not its bind interface —
   the bind stays loopback per §12).
+
+- 2026-09-06 (T2.32): tests first (6 red): 4 prompt assertions on the new backup
+  skill (frontmatter; commit-taught-before-upload **inside the Flow section**,
+  since the intro also says "commit BEFORE upload"; loud+recorded failure;
+  CLI-file-operation + server-side count) and 2 setup smoke tests (dry-run plan;
+  CLI-absent fallback prints the exact in-container create command). Implementation:
+  `prompts/skills/backup/SKILL.md` (coordinator-backup); setup.sh step 10/10
+  creates the 03:00 UTC agent job — `hermes cron create '0 3 * * *' … --name
+  knowledge-backup --skill coordinator-backup --workdir /opt/data/workspace/project`
+  (flags verified against the pinned CLI on the Pi: `docker exec hermes hermes cron
+  create --help` — the pinned CLI supports --skill attachment); idempotent via
+  `hermes cron list` when the CLI exists. "Notes log entry" (invariant 3) is
+  interpreted at runtime as a dated journal line the digest carries (the ROADMAP
+  Notes log is a build-time artifact). docker/README Scheduled jobs section updated.
+  Plugin untouched: cron_relay shape + 8-tool census unchanged (suite green).
+  **Review verdicts (fresh dual-axis, fixed point 06eadd7):** hard findings, ALL
+  FIXED in-round: (1) **path mapping** — the skill + cron prompt said
+  `git -C data/project/docs` but the job's workdir is /opt/data/workspace/project,
+  where the docs repo is `docs/` (the spec's path is the repo-root view; the job
+  would have failed its commit step daily); now teaches `git -C docs` with the
+  mapping stated; (2) **fallback not executable** — the printed command embedded a
+  literal "$prompt" placeholder (undefined in an operator shell); the prompt is now
+  inlined single-quoted in every printed command and the test asserts its presence
+  + the placeholder's absence; (3) **CLI-present branch untested** — new stateful
+  hermes shim tests: create runs with the right args (schedule/name/skill/workdir)
+  and a second run is idempotent via cron list; (4) **determinism** — HERMES_BIN
+  override (test-only knob) makes the CLI-absent branch deterministic even on
+  hosts with a real hermes. Concrete upload flags are NOT invented: the skill fixes
+  the operation ($GAPI drive upload per file preserving relative paths into
+  knowledge_base/) and defers flag syntax to the google-workspace skill's own
+  reference (the pinned gws binary is external to the repo — checking it further
+  would be guesswork). Setup-side job definition duplicates across setup.sh/README/
+  tests accepted (bash+docs surfaces; single source = setup.sh step 10).

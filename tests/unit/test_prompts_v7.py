@@ -76,3 +76,61 @@ def test_digest_skill_no_longer_teaches_per_write_upload() -> None:
     assert "$gapi drive upload" not in lowered
     assert "leave the journal local" in lowered
     assert "03:00 utc" in lowered
+
+
+def test_backup_skill_exists_with_frontmatter() -> None:
+    """T2.32: the daily backup skill ships with the standard frontmatter."""
+    path = REPO_ROOT / "prompts" / "skills" / "backup" / "SKILL.md"
+    assert path.is_file(), "missing prompts/skills/backup/SKILL.md"
+    text = path.read_text(encoding="utf-8")
+
+    assert text.startswith("---"), "no frontmatter header"
+    header = text.split("---", 2)[1]
+    assert "name: coordinator-backup" in header
+    assert "description: " in header
+    assert "03:00" in text or "3:00" in text
+
+
+def test_backup_skill_commits_before_upload() -> None:
+    """Invariant 1 (T2.32): the git commit is taught BEFORE the upload, and an
+    uncommitted-record upload is forbidden."""
+    text = (REPO_ROOT / "prompts" / "skills" / "backup" / "SKILL.md").read_text(encoding="utf-8")
+
+    flow_pos = text.find("## Flow")
+    assert flow_pos != -1, "no Flow section"
+    # The taught FLOW order is the invariant: commit is step 1, upload step 2 (the
+    # intro's "commit BEFORE upload" phrasing is not the ordering evidence).
+    commit_step = text.find("Commit first", flow_pos)
+    upload_step = text.find("Upload the record", flow_pos)
+    assert commit_step != -1, "the commit step is missing from the flow"
+    assert upload_step != -1, "the upload step is missing from the flow"
+    assert commit_step < upload_step, "commit must be taught before upload"
+    # The job runs with data/project as the workdir: the repo-root view (data/project/docs)
+    # maps to docs/ there — the taught command must be workdir-relative (review fix).
+    assert "git -C docs" in text, "the workdir-relative commit command is missing"
+    assert "data/project/docs" in text, "the path mapping must be stated"
+    assert "never upload uncommitted" in text.lower() or "commit before upload" in text.lower()
+
+
+def test_backup_skill_failure_is_loud_and_recorded() -> None:
+    """Invariant 3 (T2.32): failures post loudly to the group and are recorded."""
+    text = (
+        (REPO_ROOT / "prompts" / "skills" / "backup" / "SKILL.md")
+        .read_text(encoding="utf-8")
+        .lower()
+    )
+
+    assert "loud" in text
+    assert "silent" in text or "silently" in text
+    assert "journal" in text
+
+
+def test_backup_skill_upload_is_a_cli_file_operation() -> None:
+    """Rule 11 (T2.32): the upload never pulls file content through context, and the
+    reported count is verified server-side (a local count is not evidence)."""
+    text = (REPO_ROOT / "prompts" / "skills" / "backup" / "SKILL.md").read_text(encoding="utf-8")
+
+    lowered = text.lower()
+    assert "never" in lowered and "context" in lowered
+    assert "server-side" in lowered
+    assert "$gapi" in lowered

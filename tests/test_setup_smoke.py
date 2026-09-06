@@ -122,22 +122,27 @@ def test_dry_run_exits_zero_writes_nothing_and_leaks_no_secrets(tmp_path: Path) 
         assert str(hermes_home / "skills" / f"coordinator-{name}" / "SKILL.md") in stdout, (
             f"dry-run plan misses the coordinator-{name} install"
         )
-    # Renumber precedent (T1.7/T2.12/T2.25/T2.26/T2.30): every step banner carries the
-    # current total, so the printed plan can never contradict the docstring's list.
-    for n in range(1, 10):
-        assert f"[{n}/9]" in stdout, f"step banner [{n}/9] missing from the dry-run plan"
+    # Renumber precedent (T1.7/T2.12/T2.25/T2.26/T2.30/T2.32): every step banner
+    # carries the current total, so the printed plan can never contradict the
+    # docstring's list.
+    for n in range(1, 11):
+        assert f"[{n}/10]" in stdout, f"step banner [{n}/10] missing from the dry-run plan"
 
     # T2.26 (b)/(f): the plan must carry the Google-token permission check and the
     # exec-user guard (docker compose exec defaults to root in this container).
-    assert "== [8/9] Google token permissions" in stdout
+    assert "== [8/10] Google token permissions" in stdout
     assert "google_token.json" in stdout
     assert "docker compose exec --user" in stdout
     assert "ROOT" in stdout
 
     # T2.30: the plan must carry the site-rebuild crontab line (every 15 min, UTC —
     # dumb and LLM-free), installed idempotently by marker.
-    assert "== [9/9] Site rebuild cron" in stdout
+    assert "== [9/10] Site rebuild cron" in stdout
     assert "*/15 * * * *" in stdout and "site-build" in stdout
+    # T2.32: the plan must carry the 03:00 UTC knowledge-backup cron entry (agent job
+    # running the coordinator-backup skill; commit-before-upload lives in the skill).
+    assert "== [10/10] Knowledge backup cron" in stdout
+    assert "0 3 * * *" in stdout and "knowledge-backup" in stdout
 
     for value in SECRET_VALUES:
         assert value not in stdout + proc.stderr, "dry-run echoed a secret value"
@@ -604,3 +609,111 @@ def test_real_mode_site_cron_install_is_idempotent(tmp_path: Path) -> None:
     # find the marker and install nothing new: exactly one install in the log.
     installs = log.count("*/15 * * * *")
     assert installs == 1, f"expected exactly one cron install, got {installs}"
+
+
+# --- T2.32: the 03:00 UTC knowledge-backup cron entry (step 10/10) -----------------------
+
+
+def test_backup_cron_plan_prints_the_agent_job(tmp_path: Path) -> None:
+    """Dry-run names the 03:00 UTC agent cron job (skill-attached, named job)."""
+    hermes_home = tmp_path / "hermes-home"
+    hermes_home.mkdir()
+    env = {
+        "PATH": os.environ["PATH"],
+        "HOME": str(tmp_path / "home"),
+        "HERMES_HOME": str(hermes_home),
+        "PROJECT_DATA_ROOT": str(tmp_path / "data"),
+        **REQUIRED_ENV,
+    }
+    before = _snapshot(tmp_path)
+
+    proc = subprocess.run(
+        ["bash", str(SETUP_SH), "--dry-run"],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        env=env,
+        check=False,
+    )
+
+    assert proc.returncode == 0, f"dry-run failed:\n{proc.stdout}\n{proc.stderr}"
+    assert "0 3 * * *" in proc.stdout, "the 03:00 UTC schedule is missing"
+    assert "knowledge-backup" in proc.stdout, "the job name is missing"
+    assert "coordinator-backup" in proc.stdout, "the attached skill is missing"
+    assert _snapshot(tmp_path) == before, "dry-run wrote under tmp roots"
+
+
+def test_backup_cron_falls_back_to_in_container_command_when_cli_absent(tmp_path: Path) -> None:
+    """Without the hermes CLI, setup prints the exact in-container create command."""
+    env = _real_mode_env(tmp_path)
+
+    proc = _run_setup(env)
+
+    assert proc.returncode == 0, f"real run failed:\n{proc.stdout}\n{proc.stderr}"
+    assert "docker compose exec gateway hermes cron create '0 3 * * *'" in proc.stdout, (
+        "the in-container fallback command is missing"
+    )
+    assert "--name knowledge-backup" in proc.stdout
+    assert "--skill coordinator-backup" in proc.stdout
+
+
+def _install_hermes_shim(shim_dir: Path, tmp_path: Path) -> dict[str, str]:
+    """A stateful fake hermes CLI: 'cron list' prints the stored jobs (empty when
+    none); 'cron create' records the job. Invocations hit HERMES_SHIM_LOG."""
+    shim_dir.mkdir(parents=True, exist_ok=True)
+    shim = shim_dir / "hermes"
+    shim.write_text(
+        "#!/usr/bin/env bash\n"
+        'LOG="$HERMES_SHIM_LOG"\n'
+        'DB="$HERMES_SHIM_DB"\n'
+        'echo "ARGS: $*" >> "$LOG"\n'
+        'if [[ "$1" == "cron" && "$2" == "list" ]]; then\n'
+        '  if [[ -f "$DB" ]]; then cat "$DB"; fi\n'
+        "  exit 0\n"
+        "fi\n"
+        'if [[ "$1" == "cron" && "$2" == "create" ]]; then\n'
+        '  echo "knowledge-backup" >> "$DB"\n'
+        "  exit 0\n"
+        "fi\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    shim.chmod(0o755)
+    (tmp_path / "hermes-jobs.db").touch()
+    env = _real_mode_env(tmp_path)
+    env["PATH"] = f"{shim_dir}{os.pathsep}{env['PATH']}"
+    env["HERMES_SHIM_LOG"] = str(tmp_path / "hermes-shim.log")
+    env["HERMES_SHIM_DB"] = str(tmp_path / "hermes-jobs.db")
+    return env
+
+
+def test_backup_cron_create_runs_when_hermes_cli_present(tmp_path: Path) -> None:
+    """With a hermes CLI on PATH, step 10 actually creates the named job with the
+    attached skill and workdir (the CLI-present branch was untested before)."""
+    env = _install_hermes_shim(tmp_path / "shim", tmp_path)
+
+    proc = _run_setup(env)
+
+    assert proc.returncode == 0, f"real run failed:\n{proc.stdout}\n{proc.stderr}"
+    assert "created: knowledge-backup" in proc.stdout, proc.stdout[-400:]
+    log = Path(env["HERMES_SHIM_LOG"]).read_text(encoding="utf-8")
+    assert "ARGS: cron create 0 3 * * *" in log, "the create invocation is missing"
+    assert "--name knowledge-backup" in log
+    assert "--skill coordinator-backup" in log
+    assert "--workdir /opt/data/workspace/project" in log
+    assert "git -C docs" in log, "the prompt must teach the workdir-relative docs path"
+
+
+def test_backup_cron_create_is_idempotent_when_hermes_cli_present(tmp_path: Path) -> None:
+    """A second run sees the existing job in 'cron list' and creates nothing new."""
+    env = _install_hermes_shim(tmp_path / "shim", tmp_path)
+    first = _run_setup(env)
+    assert first.returncode == 0, first.stderr
+
+    second = _run_setup(env)
+
+    assert second.returncode == 0, second.stderr
+    assert "already exists" in second.stdout
+    log = Path(env["HERMES_SHIM_LOG"]).read_text(encoding="utf-8")
+    creates = log.count("ARGS: cron create")
+    assert creates == 1, f"expected exactly one create, got {creates}"

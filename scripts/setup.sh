@@ -27,9 +27,13 @@
 #       container runtime uid — repair when possible, print the exact sudo remedy
 #       otherwise — plus the exec-user guard: 'docker compose exec' defaults to
 #       ROOT here, so token-writing commands need '--user <runtime uid>'.
-#   9/9 Site rebuild cron (T2.30): install the host crontab line that rebuilds the
+#   9/10 Site rebuild cron (T2.30): install the host crontab line that rebuilds the
 #       static site every 15 minutes (UTC, dumb and LLM-free — rule-11 spirit);
 #       idempotent via a marker comment.
+#   10/10 Knowledge backup cron (T2.32): create the 03:00 UTC agent cron job
+#       (knowledge-backup, coordinator-backup skill attached) — commit docs/ then
+#       upload to Drive knowledge_base/; hermes CLI or printed in-container
+#       fallback.
 #
 # Overridable env knobs (defaults keep production behavior; overrides exist for
 # testability and relocated installs): HERMES_HOME, HERMES_MODEL, HERMES_UID,
@@ -92,7 +96,7 @@ uid_can_write() {
 }
 
 step_env_check() {
-  echo "== [1/9] Required env keys (names only; values are never printed) =="
+  echo "== [1/10] Required env keys (names only; values are never printed) =="
   local missing=() key
   for key in "${REQUIRED_KEYS[@]}"; do
     if [[ -n "${!key:-}" ]]; then
@@ -115,7 +119,7 @@ step_env_check() {
 }
 
 step_validate_config() {
-  echo "== [2/9] Validate config/config.yaml (python -m coordinator.config validate) =="
+  echo "== [2/10] Validate config/config.yaml (python -m coordinator.config validate) =="
   if [[ ! -f "$CONFIG_YAML" ]]; then
     if [[ "$DRY_RUN" -eq 1 ]]; then
       echo "  WARNING: $CONFIG_YAML not found (the repo ships config/config.example.yaml only)"
@@ -134,7 +138,7 @@ step_validate_config() {
 }
 
 step_install_soul_md() {
-  echo "== [3/9] SOUL.md (persona) =="
+  echo "== [3/10] SOUL.md (persona) =="
   if [[ "$DRY_RUN" -eq 1 ]]; then
     if [[ -f "$PERSONA_SRC" ]]; then
       echo "  WOULD install: $PERSONA_SRC -> $HERMES_HOME_DIR/SOUL.md"
@@ -155,7 +159,7 @@ step_install_soul_md() {
 }
 
 step_install_skills() {
-  echo "== [4/9] Coordinator skills -> runtime skill store (template-owned, overwrite) =="
+  echo "== [4/10] Coordinator skills -> runtime skill store (template-owned, overwrite) =="
   local src name dest installed=0
   for src in "$REPO_ROOT"/prompts/skills/*/SKILL.md; do
     if [[ ! -f "$src" ]]; then
@@ -185,7 +189,7 @@ hermes_set() {
 }
 
 step_apply_hermes_config() {
-  echo "== [5/9] Hermes config (model + cron.model pin + timezone UTC) =="
+  echo "== [5/10] Hermes config (model + cron.model pin + timezone UTC) =="
   local model="$HERMES_MODEL_VALUE"
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "  WOULD run (via the hermes CLI if present; otherwise apply manually):"
@@ -215,7 +219,7 @@ print_in_container_fallback() {
 }
 
 step_enable_plugin_toolsets() {
-  echo "== [6/9] Coordinator plugin + kanban toolset (runtime config) =="
+  echo "== [6/10] Coordinator plugin + kanban toolset (runtime config) =="
   # Upstream gates user plugins behind config.yaml plugins.enabled (opt-in), and the
   # kanban tools' check_fn reads the top-level toolsets list (the all wildcard does NOT
   # enable kanban). Written via 'hermes config set' — a pure config write, so it needs
@@ -238,7 +242,7 @@ step_enable_plugin_toolsets() {
 }
 
 step_seed_project_template() {
-  echo "== [7/9] Seed data/project/ from project-template/ (existing files never overwritten) =="
+  echo "== [7/10] Seed data/project/ from project-template/ (existing files never overwritten) =="
   local template_dir="$REPO_ROOT/project-template"
   local target_root="$PROJECT_DATA_ROOT/project"
   if [[ ! -d "$template_dir" ]]; then
@@ -304,7 +308,7 @@ step_seed_project_template() {
 }
 
 step_check_google_token() {
-  echo "== [8/9] Google token permissions (must be writable by the container runtime uid) =="
+  echo "== [8/10] Google token permissions (must be writable by the container runtime uid) =="
   local token_path="$HERMES_HOME_DIR/google_token.json"
   local container_uid="${HERMES_UID:-$(id -u)}"
   local container_gid="${HERMES_GID:-$(id -g)}"
@@ -363,7 +367,7 @@ step_check_google_token() {
 }
 
 step_install_site_cron() {
-  echo "== [9/9] Site rebuild cron (every 15 min, UTC — dumb and LLM-free, rule 11) =="
+  echo "== [9/10] Site rebuild cron (every 15 min, UTC — dumb and LLM-free, rule 11) =="
   local marker="# hermes-coordinator: site rebuild (T2.30) — do not edit"
   # Quoted paths: the cron line survives repo locations with spaces.
   local cron_line="*/15 * * * * cd '${REPO_ROOT}' && make site-build >> '${REPO_ROOT}/data/site-build.log' 2>&1"
@@ -401,6 +405,42 @@ step_install_site_cron() {
   echo "  installed: site rebuild cron (*/15 * * * *)"
 }
 
+step_install_backup_cron() {
+  echo "== [10/10] Knowledge backup cron (03:00 UTC — commit docs/ then upload) =="
+  # The backup is a LOAD-BEARING agent job (proposal §12 invariant 3): it runs the
+  # coordinator-backup skill — git commit BEFORE upload, server-side count, loud
+  # failure. Created via the hermes CLI when present (the pinned CLI attaches the
+  # skill with --skill; hermes cron create --help at HERMES_REF 29112bef).
+  # HERMES_BIN exists for test determinism only (a host with a real hermes must
+  # not be invoked by the suite); operators never set it.
+  local schedule="0 3 * * *"
+  local job_name="knowledge-backup"
+  local bin="${HERMES_BIN:-hermes}"
+  local workdir="/opt/data/workspace/project"
+  # The prompt is a single-quoted literal everywhere it is printed: the agent reads
+  # it verbatim, and a copy-pasted line survives as-is (no shell expansion).
+  local prompt='Run the coordinator-backup skill now: git -C docs add -A && git -C docs commit -m "daily backup" (commit BEFORE upload), upload docs/** into the Drive knowledge_base/ folder via $GAPI drive upload (per file, preserving relative paths), verify the server-side file count, and post the one-line result to the group. On any failure: loud group post + journal note, then stop.'
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "  WOULD create the agent cron job (idempotent: skipped when 'knowledge-backup' already exists):"
+    echo "    hermes cron create '$schedule' '''$prompt''' --name $job_name --skill coordinator-backup --workdir $workdir"
+    echo "  In-container fallback after 'docker compose up -d':"
+    echo "    docker compose exec gateway hermes cron create '$schedule' '''$prompt''' --name $job_name --skill coordinator-backup --workdir $workdir"
+    return 0
+  fi
+  if ! command -v "$bin" >/dev/null 2>&1; then
+    echo "  hermes CLI not found on PATH; create the job inside the container after 'docker compose up -d':"
+    echo "    docker compose exec gateway hermes cron create '$schedule' '''$prompt''' --name $job_name --skill coordinator-backup --workdir $workdir"
+    echo "  (check first: docker compose exec gateway hermes cron list  # skip when knowledge-backup exists)"
+    return 0
+  fi
+  if "$bin" cron list 2>/dev/null | grep -qw "$job_name"; then
+    echo "  ok: knowledge-backup cron already exists"
+    return 0
+  fi
+  "$bin" cron create "$schedule" "$prompt" --name "$job_name" --skill coordinator-backup --workdir "$workdir"
+  echo "  created: knowledge-backup (03:00 UTC daily)"
+}
+
 step_next_steps() {
   echo "== Next steps =="
   cat <<'NEXT_EOF'
@@ -425,6 +465,7 @@ main() {
   step_seed_project_template
   step_check_google_token
   step_install_site_cron
+  step_install_backup_cron
   step_next_steps
   echo "done."
 }

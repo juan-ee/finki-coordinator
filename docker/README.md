@@ -60,9 +60,26 @@ Later `up`s reuse the build cache; a ref bump rebuilds only changed layers.
 
 v7 (T2.28): the v6.1 nightly knowledge-sync job is deleted along with the sync
 machinery (proposal §12) — the knowledge record lives in `data/project/docs/` and
-needs no sync. The v7-era scheduled job is the **daily 03:00 UTC Drive backup**
-(agent cron, T2.32): it commits the docs repo locally, then uploads it to the Drive
-`knowledge_base/` folder (git commit BEFORE upload; failure posts loudly).
+needs no sync. Two scheduled jobs exist in the v7 era:
+
+- **Site rebuild** (T2.30): a HOST crontab line (`*/15`, UTC — dumb and LLM-free)
+  installed by `setup.sh` step 9/10; runs `make site-build`.
+- **Knowledge backup** (T2.32): an AGENT cron job at **03:00 UTC daily**, created by
+  `setup.sh` step 10/10 (`hermes cron create '0 3 * * *' … --name knowledge-backup
+  --skill coordinator-backup --workdir /opt/data/workspace/project`; the
+  in-container fallback command is printed when the CLI is absent). The job runs
+  [`prompts/skills/backup/SKILL.md`](../prompts/skills/backup/SKILL.md):
+  `git -C data/project/docs commit` **BEFORE** the `$GAPI` upload into Drive
+  `knowledge_base/`, the count verified server-side and posted to the group, and
+  any failure is a loud group post + journal record (proposal §12 invariants 1+3).
+  It inherits the `cron.model` pin like every scheduled job.
+
+Create/verify it once after boot:
+
+```sh
+docker compose exec gateway hermes cron list      # knowledge-backup present?
+docker compose exec gateway hermes cron create '0 3 * * *'   'Run the coordinator-backup skill now: commit data/project/docs locally, upload to Drive knowledge_base/, verify the server-side count, post one line.'   --name knowledge-backup --skill coordinator-backup --workdir /opt/data/workspace/project
+```
 
 `docker compose config` is valid while `data/` does not exist yet — bind mounts
 are only materialized at `up`.
