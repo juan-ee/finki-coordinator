@@ -180,11 +180,15 @@ def test_real_mode_seeds_project_template_without_overwriting(tmp_path: Path) ->
         assert (project / empty_dir / ".gitkeep").is_file(), empty_dir
 
     def snapshot() -> dict[str, str]:
-        """Content map of every seeded file, keyed by path relative to project/."""
+        """Content map of every seeded file, keyed by path relative to project/.
+
+        T2.29: docs/ is its own git repo — .git internals are runtime VCS state,
+        not seeded content, and are excluded from the byte-comparison.
+        """
         return {
             str(p.relative_to(project)): p.read_text(encoding="utf-8")
             for p in sorted(project.rglob("*"))
-            if p.is_file()
+            if p.is_file() and ".git" not in p.relative_to(project).parts
         }
 
     before = snapshot()
@@ -402,3 +406,127 @@ def test_real_mode_skips_check_on_non_numeric_container_uid(tmp_path: Path) -> N
     assert proc.returncode == 0, f"real run failed:\n{proc.stdout}\n{proc.stderr}"
     assert "HERMES_UID/HERMES_GID must be numeric" in proc.stdout
     assert "docker compose exec --user" in proc.stdout
+
+
+# --- T2.29: the local KB workspace — data/project/docs/ is its own git repo ----------
+
+
+def _git(
+    docs: Path, *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    """Run one git command inside the seeded docs repo (captured, no failure raise).
+
+    Pass env= to query git through the fixture environment: an unset env leaks the
+    real operator's global gitconfig, which would mask exactly the behavior under
+    test (setup.sh must NOT override an operator identity with a local one).
+    """
+    return subprocess.run(
+        ["git", "-C", str(docs), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+
+def test_real_mode_initializes_docs_git_repo_with_baseline_commit(tmp_path: Path) -> None:
+    """Real mode git-inits data/project/docs/ (invariant 1: local history for the
+    record), sets a local identity when the operator has none, and commits the
+    seeded content as the baseline."""
+    env = _real_mode_env(tmp_path)
+    # No global git identity in the fixture env: the repo's LOCAL identity is what
+    # the test pins (setup.sh must make the repo committable on a bare machine).
+    env["HOME"] = str(tmp_path / "home")
+    (tmp_path / "home").mkdir()
+    env["GIT_CONFIG_GLOBAL"] = str(tmp_path / "empty-gitconfig")
+    env["GIT_CONFIG_SYSTEM"] = "/dev/null"
+
+    proc = _run_setup(env)
+
+    assert proc.returncode == 0, f"real run failed:\n{proc.stdout}\n{proc.stderr}"
+    docs = tmp_path / "data" / "project" / "docs"
+    assert (docs / ".git").is_dir(), "docs/ was not git-initialized"
+    assert "git: initialized" in proc.stdout  # the exact git-setup line, not any mention
+
+    identity = _git(docs, "config", "user.name")
+    assert identity.returncode == 0 and identity.stdout.strip(), "no local git identity"
+    tracked = _git(docs, "ls-files")
+    assert "index.md" in tracked.stdout, "seeded docs not committed"
+    log = _git(docs, "log", "--oneline")
+    assert log.returncode == 0
+    assert len(log.stdout.strip().splitlines()) == 1, "expected exactly one baseline commit"
+    status = _git(docs, "status", "--porcelain")
+    assert status.stdout.strip() == "", "baseline commit left the repo dirty"
+
+
+def test_real_mode_docs_git_init_is_idempotent(tmp_path: Path) -> None:
+    """A re-run neither re-initializes the repo nor adds a second baseline commit."""
+    env = _real_mode_env(tmp_path)
+    env["GIT_CONFIG_GLOBAL"] = str(tmp_path / "empty-gitconfig")
+    env["GIT_CONFIG_SYSTEM"] = "/dev/null"
+    first = _run_setup(env)
+    assert first.returncode == 0, first.stderr
+    docs = tmp_path / "data" / "project" / "docs"
+
+    second = _run_setup(env)
+
+    assert second.returncode == 0, second.stderr
+    log = _git(docs, "log", "--oneline")
+    assert log.returncode == 0
+    assert len(log.stdout.strip().splitlines()) == 1, "re-run added commits"
+
+
+def test_real_mode_keeps_operator_git_identity_when_present(tmp_path: Path) -> None:
+    """A global operator identity is respected: setup.sh never overrides it locally.
+
+    HOME isolation (not GIT_CONFIG_GLOBAL — older git versions ignore it): the
+    fixture HOME gains an operator .gitconfig, and setup.sh must leave it in force.
+    """
+    home = tmp_path / "home"
+    home.mkdir(parents=True, exist_ok=True)
+    operator_cfg = tmp_path / "operator-gitconfig"
+    operator_cfg.write_text(
+        "[user]\n\tname = Operator\n\temail = operator@example.com\n", encoding="utf-8"
+    )
+    env = _real_mode_env(tmp_path)
+    env["HOME"] = str(home)
+    # Both identity channels carry the operator identity, so the test is independent
+    # of the local git version (GIT_CONFIG_GLOBAL needs git >= 2.32; $HOME/.gitconfig
+    # is the universal fallback).
+    (home / ".gitconfig").write_text(operator_cfg.read_text(encoding="utf-8"))
+    env["GIT_CONFIG_GLOBAL"] = str(operator_cfg)
+    env["GIT_CONFIG_SYSTEM"] = "/dev/null"
+
+    proc = _run_setup(env)
+
+    assert proc.returncode == 0, proc.stderr
+    docs = tmp_path / "data" / "project" / "docs"
+    name = _git(docs, "config", "user.name", env=env)
+    assert name.stdout.strip() == "Operator", "operator identity was overridden"
+
+
+def test_dry_run_plans_docs_git_repo_but_writes_nothing(tmp_path: Path) -> None:
+    """Dry-run names the git-init plan; nothing is created (no .git anywhere)."""
+    hermes_home = tmp_path / "hermes-home"
+    hermes_home.mkdir()
+    env = {
+        "PATH": os.environ["PATH"],
+        "HOME": str(tmp_path / "home"),
+        "HERMES_HOME": str(hermes_home),
+        "PROJECT_DATA_ROOT": str(tmp_path / "data"),
+        **REQUIRED_ENV,
+    }
+    before = _snapshot(tmp_path)
+
+    proc = subprocess.run(
+        ["bash", str(SETUP_SH), "--dry-run"],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        env=env,
+        check=False,
+    )
+
+    assert proc.returncode == 0, f"dry-run failed:\n{proc.stdout}\n{proc.stderr}"
+    assert "git repo" in proc.stdout, "dry-run plan misses the docs git-init step"
+    assert _snapshot(tmp_path) == before, "dry-run wrote under tmp roots"

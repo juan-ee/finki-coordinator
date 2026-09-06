@@ -65,7 +65,7 @@ knowledge_search) is deleted. Invariants: **git safety net · synthesis-vs-copy-
   reading (`docs/` is the record; ripgrep beats the cache). Acceptance: `make check`;
   the plugin registers exactly 8 tools; grep clean (changelogs/gate history
   excepted).
-- [ ] **T2.29 — local KB workspace: git + authoring prompts** — `setup.sh` creates
+- [x] **T2.29 — local KB workspace: git + authoring prompts** — `setup.sh` creates
   `data/project/docs/` and `git init`s it; `generate_agents_md.py` documents the
   query map over `docs/`; persona/skills prompts updated: KB changes are written
   under `docs/`, read back with file tools, and Drive is never treated as live
@@ -213,3 +213,30 @@ Log new judgement calls and residuals here, newest first.
   not-yet-existing backup skill file (T2.32 lands it). Smell notes accepted as-is:
   the v6.1-shaped test fixture re-declares v6 DDL deliberately (pinned historical
   snapshot for the 004 teardown test).
+
+- 2026-09-06 (T2.29): tests first (12 red), then: setup.sh step 7 git-inits
+  `data/project/docs/`, generator v7 sections (docs/ query map, synthesis-vs-copy-pipe
+  in the rendered policy), persona rules 3/6 + checklist flipped to file-first,
+  project-template/README.md rewritten. Judgement calls: (a) **git identity policy** —
+  a LOCAL identity is set only when the operator has none (never overrides a global
+  one), and the baseline commit happens on first boot only; re-runs never commit
+  operator changes (that is the T2.32 backup job's commit, not setup.sh's);
+  (b) `project-template/README.md` is rewritten in this task (it is the workspace's
+  own authoring doc — the "local KB workspace" surface — rather than T2.34's repo
+  README/KICKOFF); (c) the seed-snapshot test now excludes `.git` internals (runtime
+  VCS state, not seeded content — the never-overwrite guarantee is still asserted for
+  every real file); (d) the fixture operator identity is injected through BOTH
+  GIT_CONFIG_GLOBAL and $HOME/.gitconfig (git-version portability).
+  **Review verdicts (fresh dual-axis, fixed point f0724c6):** Spec — one hard-class
+  finding, FIXED in-round: the digest skill still taught "the Drive copy is the
+  team's record" + a per-write $GAPI upload (step 6) — exactly the claim this task's
+  "Drive is never treated as live truth" retires; step 6 now says the journal stays
+  local and rides the daily 03:00 UTC backup (T2.32 lands the backup skill + cron;
+  its loud-failure guidance moves there), plus a test_prompts_v7 assertion pinning
+  the digest skill. Also fixed: the placeholder-guard tautology in
+  test_project_template_readme (Spec C1) and a weak "git" output assertion.
+  Standards — no hard violations; project-template/README scope item ruled a
+  disclosed judgement call (Notes (b)); the near-verbatim copy-pipe wording across
+  persona/generator/README accepted (distinct audiences; drift tracked here) and the
+  setup.sh extract-function suggestion noted, not taken (linear first-boot
+  sequence).

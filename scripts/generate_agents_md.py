@@ -3,10 +3,10 @@
 
 Impure shell (AGENTS.md rule 3): this CLI owns all I/O — it reads members from the SQLite
 database and writes the markdown file — and delegates the content to the pure
-``render(members)``. Output is deterministic by construction (AGENTS.md rule 5): no
+`render(members)`. Output is deterministic by construction (AGENTS.md rule 5): no
 timestamps, no clock, nothing volatile, so a re-run over the same database is
 byte-identical and simply overwrites the output file in place. telegram_id (or any
-other secret) is never rendered: the runtime file is uploaded to the shared Drive.
+other secret) is never rendered.
 """
 
 from __future__ import annotations
@@ -24,8 +24,8 @@ DEFAULT_OUT = Path("data") / "project" / "AGENTS.md"
 _HEADER = """# AGENTS.md — runtime context for the coordinator bot
 
 > **Scope:** this file governs the **coordinator bot** — the Hermes agent operating this
-> project. It is **not** the template repository's engineering `AGENTS.md`, which governs
-> the agents that *build* the template.
+> project. It is **not** the template repository's engineering `AGENTS.md` (which governs
+> the agents that *build* the template).
 >
 > **Generated** by `scripts/generate_agents_md.py` from the members database. Do not edit
 > by hand: update the database (or the script) and re-run it. Output is deterministic —
@@ -49,44 +49,42 @@ here on the next regeneration.)*
 """
 
 _STRUCTURE = """
-## Project layout: Drive is the record; this folder is the agent workspace
+## Project layout: the Pi is the record; this folder is the agent workspace
 
-The team's shared documents live on **Google Drive** (`docs/product/brief.md`,
-`docs/decisions/`, `docs/meetings/`, `docs/howto/`, `assets/`) — Drive is the record.
-`data/project/` is the bot's local workspace: the gateway runs with it as working
-directory, so this file is injected into sessions automatically. Drive documents are
-cached locally by the deterministic sync script (`scripts/sync_knowledge.py` —
-refreshed by `make sync` and the nightly cron job) and searched with
-`knowledge_search`; the cache is rebuildable from Drive at any time.
+The knowledge record is **local**: all team `.md` live under `docs/` in this very
+folder — write them directly and read them back with file tools; plain search
+(ripgrep) beats any cache. `docs/` is its own git repo (the safety net), rendered to
+a static site, and backed up daily to Google Drive — Drive is **backup + inbox only**,
+never live truth (`input/` = documents humans drop, `processed/` = already ingested,
+`knowledge_base/` = the daily 03:00 UTC backup of `docs/`).
 
 ```text
-Google Drive (the record — team-edited):
-├── docs/product/brief.md             ← mission — read it before any major ask
-├── docs/decisions/                   ← ADRs (numbered)
-├── docs/meetings/                    ← dated notes
-├── docs/howto/                       ← operational playbooks
-├── assets/                           ← images, binaries
-├── people/                           ← optional per-member notes (never the roster)
+data/project/docs/ (the record — git-versioned):
+├── index.md                            ← curated map of docs/ — keep it current
+├── product/brief.md                    ← mission — read it before any major ask
+├── decisions/                          ← ADRs (numbered)
+├── meetings/                           ← dated notes
+└── howto/                              ← operational playbooks
 
 data/project/ (agent workspace — local):
-├── AGENTS.md                         ← GENERATED (roster + layout + query map)
-├── README.md                         ← human onboarding; static
-├── journal/                          ← daily digests: written here, uploaded to Drive
-├── inbox/                            ← drop zone: anything unfiled (weekly triage)
-├── templates/                        ← brief.md · adr.md · meeting-notes.md
-└── .archive/                         ← moved, never deleted
+├── AGENTS.md                           ← GENERATED (roster + layout + query map)
+├── README.md                           ← human onboarding; static
+├── journal/                            ← daily digests (stay local; ride the backup)
+├── inbox/                              ← scratch drop zone: anything unfiled
+├── templates/                          ← brief.md · adr.md · meeting-notes.md
+└── .archive/                           ← moved, never deleted
 ```
 """
 
 _QUERY_MAP = """
 ## Query map
 
-- **Mission & goals** → `docs/product/brief.md` on Drive — read it before any major ask.
-- **Project questions** → `knowledge_search`, then confirm against the LIVE Drive
-  original before quoting — the index is a finding aid; Drive is current truth.
+- **Mission & goals** → `docs/product/brief.md` — read it before any major ask.
+- **Project questions** → search the `docs/` files directly (ripgrep beats a cache);
+  the file you read IS the record.
 - **Status & activity** → `journal/` by date, or the `checkins_by_date` tool.
 - **Tasks** → the `kanban_*` tools — never files.
-- **What's new** → `inbox/` triage.
+- **What's new** → Drive `input/` (documents humans dropped) + local `inbox/` scratch.
 - **Who & availability** → `member_list` — never a file.
 - **Templates** → live in `templates/` (local).
 """
@@ -94,13 +92,14 @@ _QUERY_MAP = """
 _POLICY = """
 ## Editorial policy
 
-- File the drafts you author into `inbox/` — never write into `docs/` directly.
-- Weekly triage moves inbox drafts into the Drive `docs/**` (via $GAPI upload) and
-  posts a "what I filed" summary to the group.
-- Journals and digests you write are uploaded to Drive after writing ($GAPI drive
-  upload) — Drive's version history is the conflict safety net.
-- `journal/`, `inbox/` and `.archive/` are agent-writable; Drive `docs/` placement
-  always goes through triage.
+- Knowledge-base changes are written **straight under `docs/`** — the git history is
+  the safety net; there is no upload step. Update `docs/index.md` when you add a file.
+- Synthesis vs copy-pipe: you may READ a source document and WRITE a synthesized
+  `.md` — transformation is the job. Never recite a document into chat as the
+  "knowledge base update"; never hand-copy files verbatim file-by-file as "sync".
+- `journal/`, `inbox/` and `.archive/` are agent-writable; journals stay local and
+  ride the daily Drive backup.
+- Google Drive is never treated as live truth: the local `docs/` file always wins.
 """
 
 _TABLE_HEADER = "| Name | Timezone | Wake | Role | Active |\n|---|---|---|---|---|\n"

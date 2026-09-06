@@ -244,6 +244,7 @@ step_seed_project_template() {
   fi
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "  WOULD seed: $target_root (first boot; existing files are never overwritten)"
+    echo "  WOULD ensure: $target_root/docs is a git repo (init + local identity if none + baseline commit)"
     local rel
     while IFS= read -r rel; do
       rel="${rel#"$template_dir"/}"
@@ -270,6 +271,33 @@ step_seed_project_template() {
     fi
   done < <(find "$template_dir" -type f | sort)
   echo "  seeded: $target_root ($copied copied, $kept already existed)"
+
+  # v7 (T2.29, proposal §12 invariant 1): the knowledge record needs LOCAL history —
+  # make data/project/docs/ its own git repo, once, committable on a bare machine.
+  # The daily 03:00 UTC backup job (T2.32) commits BEFORE it uploads; a repo that
+  # cannot commit would violate the invariant this init exists for.
+  local docs_dir="$target_root/docs"
+  local did_init=0
+  if [[ ! -d "$docs_dir/.git" ]]; then
+    git -C "$docs_dir" init >/dev/null
+    did_init=1
+    echo "  git: initialized $docs_dir (the record's local history)"
+  fi
+  # Identity: set a LOCAL identity only when the operator has none (a global identity
+  # is respected, never overridden — commit attribution stays the operator's).
+  if ! git -C "$docs_dir" config user.name >/dev/null 2>&1; then
+    git -C "$docs_dir" config user.name "Hermes Coordinator"
+  fi
+  if ! git -C "$docs_dir" config user.email >/dev/null 2>&1; then
+    git -C "$docs_dir" config user.email "coordinator@localhost"
+  fi
+  # Baseline commit on first boot only: re-runs never commit operator changes —
+  # that is the daily backup job's job, not setup.sh's.
+  if [[ "$did_init" -eq 1 && -n "$(git -C "$docs_dir" status --porcelain)" ]]; then
+    git -C "$docs_dir" add -A
+    git -C "$docs_dir" -c commit.gpgsign=false commit -q -m "seed: baseline"
+    echo "  git: baseline commit created"
+  fi
 }
 
 step_check_google_token() {

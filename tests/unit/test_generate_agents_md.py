@@ -6,6 +6,9 @@ from a fixture SQLite database (tmp_path, fixed created_at strings); the impure 
 shell (--db read -> render -> write, rerun byte-identity, in-place overwrite, error
 exit) runs end-to-end via subprocess. GOLDEN and GOLDEN_EMPTY below are independent
 literals: the implementation must conform to them, never the other way round.
+v7 (T2.29): the layout/query map/policy sections describe the Pi-local record —
+docs/ files read and written directly, Drive as backup + inbox only, and the
+AGENTS.md rule-11 synthesis-vs-copy-pipe rule.
 """
 
 import importlib.util
@@ -56,27 +59,38 @@ EXPECTED_TELEGRAM_IDS = ("101", "103", "104")
 EXPECTED_QUERY_MAP_PHRASES = (
     "docs/product/brief.md",
     "read it before any major ask",
-    "knowledge_search",
-    "confirm against the LIVE Drive",
-    "$GAPI upload",
+    "ripgrep",
+    "the file you read IS the record",
     "journal/",
     "checkins_by_date",
     "kanban_*",
+    "input/",
     "inbox/",
     "member_list",
     "templates/",
 )
+# v7 negatives: the deleted machinery and the retracted claims must never reappear.
+FORBIDDEN_RENDER_PHRASES = (
+    "knowledge_search",
+    "sync_knowledge",
+    "knowledge cache",
+    "Drive is the record",
+    "confirm against the LIVE Drive",
+    "$GAPI upload",
+)
 
-GOLDEN = """# AGENTS.md — runtime context for the coordinator bot
+_HEADER = """# AGENTS.md — runtime context for the coordinator bot
 
 > **Scope:** this file governs the **coordinator bot** — the Hermes agent operating this
-> project. It is **not** the template repository's engineering `AGENTS.md`, which governs
-> the agents that *build* the template.
+> project. It is **not** the template repository's engineering `AGENTS.md` (which governs
+> the agents that *build* the template).
 >
 > **Generated** by `scripts/generate_agents_md.py` from the members database. Do not edit
 > by hand: update the database (or the script) and re-run it. Output is deterministic —
 > the same roster always renders byte-identical content.
+"""
 
+_ROSTER = """
 ## Team roster
 
 The members database is the live source of truth — `member_list` is the authoritative
@@ -89,121 +103,67 @@ ordered by name). Wake times are each member's local "HH:MM".
 | Bob | Europe/Berlin | 08:30 | ops | yes |
 | Carla | America/Guayaquil | 09:00 | frontend | no |
 | Dave | UTC | — | — | yes |
-
-## Project layout: Drive is the record; this folder is the agent workspace
-
-The team's shared documents live on **Google Drive** (`docs/product/brief.md`,
-`docs/decisions/`, `docs/meetings/`, `docs/howto/`, `assets/`) — Drive is the record.
-`data/project/` is the bot's local workspace: the gateway runs with it as working
-directory, so this file is injected into sessions automatically. Drive documents are
-cached locally by the deterministic sync script (`scripts/sync_knowledge.py` —
-refreshed by `make sync` and the nightly cron job) and searched with
-`knowledge_search`; the cache is rebuildable from Drive at any time.
-
-```text
-Google Drive (the record — team-edited):
-├── docs/product/brief.md             ← mission — read it before any major ask
-├── docs/decisions/                   ← ADRs (numbered)
-├── docs/meetings/                    ← dated notes
-├── docs/howto/                       ← operational playbooks
-├── assets/                           ← images, binaries
-├── people/                           ← optional per-member notes (never the roster)
-
-data/project/ (agent workspace — local):
-├── AGENTS.md                         ← GENERATED (roster + layout + query map)
-├── README.md                         ← human onboarding; static
-├── journal/                          ← daily digests: written here, uploaded to Drive
-├── inbox/                            ← drop zone: anything unfiled (weekly triage)
-├── templates/                        ← brief.md · adr.md · meeting-notes.md
-└── .archive/                         ← moved, never deleted
-```
-
-## Query map
-
-- **Mission & goals** → `docs/product/brief.md` on Drive — read it before any major ask.
-- **Project questions** → `knowledge_search`, then confirm against the LIVE Drive
-  original before quoting — the index is a finding aid; Drive is current truth.
-- **Status & activity** → `journal/` by date, or the `checkins_by_date` tool.
-- **Tasks** → the `kanban_*` tools — never files.
-- **What's new** → `inbox/` triage.
-- **Who & availability** → `member_list` — never a file.
-- **Templates** → live in `templates/` (local).
-
-## Editorial policy
-
-- File the drafts you author into `inbox/` — never write into `docs/` directly.
-- Weekly triage moves inbox drafts into the Drive `docs/**` (via $GAPI upload) and
-  posts a "what I filed" summary to the group.
-- Journals and digests you write are uploaded to Drive after writing ($GAPI drive
-  upload) — Drive's version history is the conflict safety net.
-- `journal/`, `inbox/` and `.archive/` are agent-writable; Drive `docs/` placement
-  always goes through triage.
 """
 
-GOLDEN_EMPTY = """# AGENTS.md — runtime context for the coordinator bot
-
-> **Scope:** this file governs the **coordinator bot** — the Hermes agent operating this
-> project. It is **not** the template repository's engineering `AGENTS.md`, which governs
-> the agents that *build* the template.
->
-> **Generated** by `scripts/generate_agents_md.py` from the members database. Do not edit
-> by hand: update the database (or the script) and re-run it. Output is deterministic —
-> the same roster always renders byte-identical content.
-
+_ROSTER_EMPTY = """
 ## Team roster
 
 *(No members are registered yet. Add them with `member_add`; the roster table appears
 here on the next regeneration.)*
+"""
 
-## Project layout: Drive is the record; this folder is the agent workspace
+_V7_BODY = """
+## Project layout: the Pi is the record; this folder is the agent workspace
 
-The team's shared documents live on **Google Drive** (`docs/product/brief.md`,
-`docs/decisions/`, `docs/meetings/`, `docs/howto/`, `assets/`) — Drive is the record.
-`data/project/` is the bot's local workspace: the gateway runs with it as working
-directory, so this file is injected into sessions automatically. Drive documents are
-cached locally by the deterministic sync script (`scripts/sync_knowledge.py` —
-refreshed by `make sync` and the nightly cron job) and searched with
-`knowledge_search`; the cache is rebuildable from Drive at any time.
+The knowledge record is **local**: all team `.md` live under `docs/` in this very
+folder — write them directly and read them back with file tools; plain search
+(ripgrep) beats any cache. `docs/` is its own git repo (the safety net), rendered to
+a static site, and backed up daily to Google Drive — Drive is **backup + inbox only**,
+never live truth (`input/` = documents humans drop, `processed/` = already ingested,
+`knowledge_base/` = the daily 03:00 UTC backup of `docs/`).
 
 ```text
-Google Drive (the record — team-edited):
-├── docs/product/brief.md             ← mission — read it before any major ask
-├── docs/decisions/                   ← ADRs (numbered)
-├── docs/meetings/                    ← dated notes
-├── docs/howto/                       ← operational playbooks
-├── assets/                           ← images, binaries
-├── people/                           ← optional per-member notes (never the roster)
+data/project/docs/ (the record — git-versioned):
+├── index.md                            ← curated map of docs/ — keep it current
+├── product/brief.md                    ← mission — read it before any major ask
+├── decisions/                          ← ADRs (numbered)
+├── meetings/                           ← dated notes
+└── howto/                              ← operational playbooks
 
 data/project/ (agent workspace — local):
-├── AGENTS.md                         ← GENERATED (roster + layout + query map)
-├── README.md                         ← human onboarding; static
-├── journal/                          ← daily digests: written here, uploaded to Drive
-├── inbox/                            ← drop zone: anything unfiled (weekly triage)
-├── templates/                        ← brief.md · adr.md · meeting-notes.md
-└── .archive/                         ← moved, never deleted
+├── AGENTS.md                           ← GENERATED (roster + layout + query map)
+├── README.md                           ← human onboarding; static
+├── journal/                            ← daily digests (stay local; ride the backup)
+├── inbox/                              ← scratch drop zone: anything unfiled
+├── templates/                          ← brief.md · adr.md · meeting-notes.md
+└── .archive/                           ← moved, never deleted
 ```
 
 ## Query map
 
-- **Mission & goals** → `docs/product/brief.md` on Drive — read it before any major ask.
-- **Project questions** → `knowledge_search`, then confirm against the LIVE Drive
-  original before quoting — the index is a finding aid; Drive is current truth.
+- **Mission & goals** → `docs/product/brief.md` — read it before any major ask.
+- **Project questions** → search the `docs/` files directly (ripgrep beats a cache);
+  the file you read IS the record.
 - **Status & activity** → `journal/` by date, or the `checkins_by_date` tool.
 - **Tasks** → the `kanban_*` tools — never files.
-- **What's new** → `inbox/` triage.
+- **What's new** → Drive `input/` (documents humans dropped) + local `inbox/` scratch.
 - **Who & availability** → `member_list` — never a file.
 - **Templates** → live in `templates/` (local).
 
 ## Editorial policy
 
-- File the drafts you author into `inbox/` — never write into `docs/` directly.
-- Weekly triage moves inbox drafts into the Drive `docs/**` (via $GAPI upload) and
-  posts a "what I filed" summary to the group.
-- Journals and digests you write are uploaded to Drive after writing ($GAPI drive
-  upload) — Drive's version history is the conflict safety net.
-- `journal/`, `inbox/` and `.archive/` are agent-writable; Drive `docs/` placement
-  always goes through triage.
+- Knowledge-base changes are written **straight under `docs/`** — the git history is
+  the safety net; there is no upload step. Update `docs/index.md` when you add a file.
+- Synthesis vs copy-pipe: you may READ a source document and WRITE a synthesized
+  `.md` — transformation is the job. Never recite a document into chat as the
+  "knowledge base update"; never hand-copy files verbatim file-by-file as "sync".
+- `journal/`, `inbox/` and `.archive/` are agent-writable; journals stay local and
+  ride the daily Drive backup.
+- Google Drive is never treated as live truth: the local `docs/` file always wins.
 """
+
+GOLDEN = _HEADER + _ROSTER + _V7_BODY
+GOLDEN_EMPTY = _HEADER + _ROSTER_EMPTY + _V7_BODY
 
 
 def _load_script_module():
@@ -262,11 +222,13 @@ def test_render_golden_file(tmp_path: pathlib.Path) -> None:
         assert timezone in rendered
     for phrase in EXPECTED_QUERY_MAP_PHRASES:
         assert phrase in rendered
+    for forbidden in FORBIDDEN_RENDER_PHRASES:
+        assert forbidden not in rendered, forbidden
     assert rendered == GOLDEN
 
 
 def test_render_omits_telegram_ids(tmp_path: pathlib.Path) -> None:
-    """Fixture telegram_id values never reach the rendered file (it syncs to a Drive)."""
+    """Fixture telegram_id values never reach the rendered file (roster privacy)."""
     members = _fetched_fixture_members(tmp_path)
 
     rendered = generate_agents_md.render(members)

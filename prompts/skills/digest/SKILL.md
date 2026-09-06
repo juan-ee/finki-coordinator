@@ -1,6 +1,6 @@
 ---
 name: coordinator-digest
-description: Use when the daily digest cron fires or the owner asks for the day digest — collect, write the journal, upload to Drive, post the summary.
+description: Use when the daily digest cron fires or the owner asks for the day digest — collect, write the journal (it rides the daily Drive backup), post the summary.
 category: productivity
 ---
 
@@ -20,10 +20,10 @@ schedule was computed by the plugin; relay schedules verbatim, never recompute).
    is agent-writable — write it directly, no triage step.
 5. **Post the condensed summary** to the delivery chat (the chat configured for the
    digest). The summary is short; the journal carries the detail. Link the journal path.
-6. **Upload the fresh journal entry to Drive** via the google-workspace skill
-   (`$GAPI drive upload` — proposal §3): the Drive copy is the team's record, and
-   Google Drive's version history is the conflict safety net. If the upload fails, say
-   so in one line at the end of the journal entry — drift must be visible, not silent.
+6. **Leave the journal local.** The entry stays under `journal/` — it reaches Drive
+   through the daily 03:00 UTC backup job (git commit BEFORE upload), not through this
+   flow. v7 retired the per-write upload: never upload the journal yourself, and never
+   treat a Drive copy as live truth — the local file is the record.
 7. **Flag misses:** members who did not check in today appear in Flags with a one-line
    note — the morning nudge is the follow-up, not a thread tonight.
 
@@ -71,5 +71,3 @@ schedule was computed by the plugin; relay schedules verbatim, never recompute).
   DM or the morning thread.
 - If `checkins_by_date` returns zero rows AND no member was expected, still write the
   journal entry (an honest empty day) — the record must be continuous.
-- If the Drive upload (`$GAPI drive upload`) fails, say so in one line at the end of
-  the journal entry — drift must be visible, not silent.
