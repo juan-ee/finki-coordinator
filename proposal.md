@@ -1,8 +1,14 @@
-# Hermes — Async Project Coordinator Template (v6)
+# Hermes — Async Project Coordinator Template (v7)
 
 **Goal:** a *clonable template repo* that anyone can copy, fill two config files, and run on
-their own hardware: an always-on Telegram coordinator with a Google Shared Drive as the
-knowledge source — and **no restart needed for everyday changes**.
+their own hardware: an always-on Telegram coordinator whose knowledge record lives on the
+Pi itself (`data/project/docs/`, git-versioned; static site + Cloudflare Tunnel) with
+Google Drive demoted to daily backup + document inbox — and **no restart needed for
+everyday changes**.
+
+> **v7 (owner decision 2026-09-06):** the knowledge record moved from Drive to the Pi —
+> the Pi is the record, Drive is backup + inbox. **§12** is the decision record; where
+> older sections conflict, §12 wins.
 
 **Confirmed decisions (rounds 1–5):**
 - Pi **5, 8 GB RAM**, 64-bit OS on SSD, 40 GB free · Docker Compose, built from source at a
@@ -56,12 +62,12 @@ knowledge source — and **no restart needed for everyday changes**.
 ```
              ┌─────────────────────────────────────────────────────┐
              │  data/hermes/hermes-coord.db  (SQLite, live state)  │
-             │   members · checkins · settings · knowledge cache   │
-             │   (FTS5) — read/written by the plugin tools         │
+             │        members · checkins · settings                │
+             │        — read/written by the plugin tools           │
              └──────────────┬──────────────────────────────────────┘
                             │ tools: member_add/update/list/delete,
                             │ checkin_submit, checkins_by_date,
-                            │ setting_get/set, knowledge_sync/search
+                            │ setting_get/set
                Telegram     │   (agent calls them; humans talk to the bot)
      "I'm Leo (id 123…), Berlin, wake 10:00"  ─────►  INSERT member
                             │        + tool returns a ready-made cronjob call
@@ -122,14 +128,14 @@ knowledge source — and **no restart needed for everyday changes**.
 
 **The coordinator plugin** is a small Python Hermes toolset (`register_tool` — the
 documented plugin path; stdlib `sqlite3` + `zoneinfo`, zero extra dependencies) exposing
-**10 tools**:
+**8 tools**:
 `member_add` · `member_update` · `member_list` · `member_delete` · `checkin_submit` ·
-`checkins_by_date` · `setting_get` · `setting_set` · `knowledge_sync` · `knowledge_search`.
+`checkins_by_date` · `setting_get` · `setting_set`.
 (Cuts vs v4: `member_deactivate` → `member_update` with `active=0`; `member_get` →
 `member_list` filtered; `board_snapshot` → the `kanban_*` toolset already covers it.
-v6 additions (D1/D2): `member_delete`, `knowledge_search`. (The v6 `knowledge_sync`
-tool was removed in v6.1 — sync is the deterministic script, §3/§11.)
-Every tool is prompt tokens and misuse surface.)
+v6 addition (D1): `member_delete`. The v6 `knowledge_sync` tool was removed in v6.1;
+the v6 `knowledge_search` tool was removed in v7 — the agent reads its own `docs/`
+files directly (§3/§12). Every tool is prompt tokens and misuse surface.)
 Every DB connection opens with `PRAGMA journal_mode=WAL` + `busy_timeout=5000` — the
 gateway, the journal export and any script share the file without lock errors.
 
@@ -159,32 +165,7 @@ CREATE TABLE settings (                    -- runtime knobs (key → value, TEXT
   key   TEXT PRIMARY KEY,                  -- digest_chat, nudge_limit
   value TEXT
 );
--- Knowledge cache (v6): rebuildable from Drive at any time — the index, not the record.
-CREATE TABLE knowledge (
-  chunk_id       INTEGER PRIMARY KEY,
-  file_id        TEXT NOT NULL,   -- Drive file id (stable across renames)
-  path           TEXT NOT NULL,   -- logical path within the Drive root
-  title          TEXT NOT NULL,
-  heading        TEXT,            -- section heading (chunk label; NULL = preamble)
-  body           TEXT NOT NULL,
-  modified_time  TEXT NOT NULL,   -- Drive modifiedTime — the sync watermark source
-  fetched_at     TEXT NOT NULL,
-  UNIQUE(file_id, heading)         -- per-file reindex = DELETE + reINSERT, idempotent
-);
-CREATE INDEX knowledge_file ON knowledge(file_id);
--- External-content FTS5 over the cache rows: one text store, no duplication, no
--- triggers (the sync owns writes). unicode61 + remove_diacritics 2 makes matching
--- accent-insensitive: MATCH 'decision' finds "decisión".
-CREATE VIRTUAL TABLE knowledge_fts USING fts5(
-  title, body,
-  content='knowledge',
-  content_rowid='chunk_id',
-  tokenize='unicode61 remove_diacritics 2'
-);
--- Ranking: title matches weigh 10:1 above body matches.
--- SELECT chunk_id, bm25(knowledge_fts, 10.0, 1.0) AS rank
---   FROM knowledge_fts WHERE knowledge_fts MATCH ?
---   ORDER BY rank LIMIT 3;
+-- v7: no knowledge/cache DDL — the record is data/project/docs/ on the Pi (§3/§12).
 ```
 
 Bootstrap: `scripts/init_db.py` seeds from `config/members.seed.yaml` **once** on first
@@ -206,7 +187,7 @@ door-first flow, or a gitignored local seed file if the founding roster is pre-k
 | `config/members.seed.yaml` | ✅ yes | bootstrap seed example (imported once, then DB wins) |
 | `prompts/`, `scripts/`, `docker-compose.yml`, `README.md` | ✅ yes | template code |
 | `THIRD_PARTY_NOTICES.md` | ✅ yes | Apache 2.0 attribution for extracted OpenExecutive content |
-| `data/**` | ❌ no (gitignored) | runtime state: kanban.db, hermes-coord.db, Drive mirror |
+| `data/**` | ❌ no (gitignored) | runtime state: kanban.db, hermes-coord.db, the agent workspace (`docs/` record + `site/`) |
 
 ### `.env.example` — the **complete** secret inventory (all envs)
 
@@ -250,7 +231,7 @@ rclone remotes to configure, and nothing Drive-related passes through compose.
 ```yaml
 project:
   name: my-project
-  drive_root: "MyProject"          # folder inside the Shared Drive
+  drive_root: "MyProject"          # Drive backup + inbox root (input/ processed/ knowledge_base/)
   timezone: Europe/Berlin          # anchor for human-facing times (the digest)
 telegram:
   group_id: ""                     # optional; empty = no group broadcasts
@@ -274,117 +255,71 @@ The model id is the one variable the agent never owns: Hermes itself blocks the 
 `cronjob` tool from changing model pins — model choice is the money valve.
 
 Runtime things are **not** in config.yaml because they're DB state: members, check-ins,
-`nudge_limit`, `digest_chat`, per-member timezone/wake, all cron schedules, and the
-knowledge-sync watermark.
+`nudge_limit`, `digest_chat`, per-member timezone/wake, and all cron schedules.
 
 ---
 
-## 3. Knowledge: Drive is the record; the agent is its librarian (v6)
+## 3. Knowledge: the Pi is the record; Drive is backup + inbox (v7)
 
-> ⚠️ **Superseded in part by §12 (v7, owner decision 2026-09-06): the Pi is now the
-> record; Drive is backup + inbox. This body describes v6.1 until T2.27 folds it.**
+> **v7 (owner decision 2026-09-06):** this body is the folded v7 shape; **§12** stays as
+> the decision record. Where any older section conflicts, §12 wins.
 
-**Layout (owner decision 2026-09-03):** Google Drive holds the team-edited docs — the
-record. The Pi holds no mirror: the local side carries only the agent-owned, rebuildable
-cache + index (the `knowledge`/`knowledge_fts` tables inside `hermes-coord.db`, §1)
-and the gateway working directory `data/project/` — the agent workspace whose authored
-files are uploaded to Drive after writing. Deleting the local cache = a full resync; it
-is an index, not the record.
+**Layout (v7):** all team `.md` live on the Pi under `data/project/docs/` — the record.
+The folder is its own git repo (setup.sh initializes it): the git history is the local
+safety net, and the daily backup commits BEFORE it uploads (§12 invariant 1). The agent
+writes documents there directly and reads them back as plain files (Hermes file tools /
+ripgrep — plain search absorbs the retired `knowledge_search`; the FTS5 cache
+indirection is deleted, §12). A static MkDocs Material site renders `docs/` to
+`data/site/`, served by caddy on 127.0.0.1:8080 and exposed — with the Hermes
+dashboard — through one outbound-only Cloudflare Tunnel behind Cloudflare Access
+(Google SSO, team only).
 
 ```
-Google Drive (the record — team-edited):     data/project/ (agent workspace, local):
-├── docs/                                    ├── AGENTS.md   ← GENERATED (roster +
-│   ├── product/brief.md                     │                  structure + query map)
-│   │     (mission — read before major asks) ├── README.md   ← human onboarding; static
-│   ├── decisions/  ← ADRs (numbered)        ├── journal/    ← daily digests (written
-│   ├── meetings/   ← dated notes            │                  locally, uploaded UP)
-│   └── howto/      ← operational playbooks  ├── inbox/      ← drop zone; triage files
-├── assets/         ← images, binaries       │                  into Drive docs/**
-└── people/         ← optional per-member    ├── templates/  ← brief/adr/meeting-notes
-                     notes (never the roster) └── .archive/   ← moved, never deleted
+data/project/docs/*.md          ← the record (agent writes; git-versioned)
+  └─ mkdocs build ─► data/site/ ─► caddy (127.0.0.1:8080) ─┐
+Hermes dashboard (127.0.0.1:9119, /kanban tab) ────────────┤
+                                                           ▼
+                                               cloudflared (outbound-only tunnel)
+                                                           ▼
+                                    Cloudflare edge — Access: Google SSO (team only)
+                                                           ▼
+                                        kb.<domain> · board.<domain>
 ```
 
-**The loop — DOWN · INDEX · READ · UP (D2):**
-- **DOWN — `scripts/sync_knowledge.py`** (deterministic script, v6.1): incremental by
-  Drive `modifiedTime`. It lists the knowledge Drive via the google-workspace skill's
-  own CLI, filters files whose `modifiedTime` passed the stored watermark, downloads
-  those, and ingests them through the plugin's own chunker + `KnowledgeRepository` —
-  the same code path the former tool used (per-file reindex = DELETE + reINSERT),
-  minus the LLM. The watermark stays derived state (`MAX(modified_time)` over cached
-  rows), so there is no knob to clobber. Runs from a `hermes cron` job (nightly) and
-  on demand (`make sync`); `--resync` rebuilds the cache from scratch; a run with no
-  Drive-side changes ingests nothing. **The former agent-mediated two-call
-  `knowledge_sync` tool is removed:** on the phase-2 gate it invented file contents
-  mid-ingest (self-caught, repaired via the same-file_id-replaces contract) and
-  stalled batch-shuttling 19 files through LLM context — file content never crosses
-  LLM context again (AGENTS.md hard rule 11).
-- **INDEX — SQLite FTS5, external-content table** (DDL in §1): `unicode61
-  remove_diacritics 2` (accent-insensitive: `MATCH 'decision'` finds "decisión"),
-  `bm25()` ranking with title weighted 10:1 above body, one chunk per markdown `##`
-  section (heading-less documents = one chunk; duplicate headings get an occurrence
-  suffix so `UNIQUE(file_id, heading)` holds), no overlap, no embeddings, no prefix
-  indexes — YAGNI until a real query misses. **Non-text documents** (PDFs, binaries,
-  Google-native exports): index title/path only — the agent extracts content on live
-  read (Hermes' document extraction is agent-side; a plugin tool cannot borrow it, so
-  the index never pretends to hold text it cannot reliably extract).
-  `INSERT INTO knowledge_fts(knowledge_fts, rank)
-  VALUES('integrity-check', -1)` is the phase-gate verification command — the rank
-  form is required: the plain form detects nothing on SQLite 3.50.4 or 3.51.3,
-  while the rank form detects both desync directions (an out-of-band knowledge-row
-  delete and an out-of-band insert) on the suite's SQLite 3.50.4 (T2.13).
-- **READ — `knowledge_search`** (coordinator tool): returns the top chunks
-  (file_id / path / title / heading). The agent then reads the **live original on
-  Drive** (`$GAPI` download/get) before quoting it — the index is a finding aid;
-  Drive is current truth.
-- **UP — `$GAPI drive upload`:** journals, digests, and structured docs the agent
-  writes ARE uploaded to Drive (core feature, not deferred). Google Drive's built-in
-  version history is the conflict safety net — no bisync, no rclone, no host crontab,
-  no recovery runbooks.
+**Google Drive carries exactly three folders (backup + inbox only):**
 
-**Freshness model (v6.1 — layered; cron is the baseline, gates bound the staleness):**
-1. **Scheduled baseline:** the nightly `hermes cron` sync bounds staleness at ~24h with
-   zero moving parts.
-2. **Read-through gate (search):** `knowledge_search` checks a last-freshness-check
-   timestamp (injected `Clock`); if older than `knowledge.freshness_ttl_minutes`
-   (config knob, default ~10), it runs the deterministic incremental sync first —
-   normally one Drive list call returning zero changes (~sub-second), then proceeds.
-   Repeated searches inside the TTL never re-check. **Degraded mode:** if Drive is
-   unreachable, the search serves the cache anyway and says so in the result summary —
-   a Drive outage must never take down reading.
-3. **Write-through (upload):** after every successful `$GAPI drive upload`, the agent
-   runs `make sync` (one shell call — deterministic ingestion; hard rule 11 intact).
-   Write-through only works when **every writer** uses the path, so the knowledge
-   skill's upload section makes the post-upload sync mandatory (T2.20).
-4. **Upgrade path — Drive Changes API cursor:** replace the `modifiedTime` watermark
-   with `changes.list`'s `pageToken` cursor (incremental change feed) to also detect
-   **deletions/trashes/moves** — the one thing a modifiedTime watermark structurally
-   misses. Still polling: Drive **push webhooks** (`changes.watch`) need a public HTTPS
-   receiver — rejected (the Pi has no inbound ports by design; a tunnel is infra we
-   won't run). Note: the change feed can lag a few seconds after a write (propagation),
-   which the TTL gate absorbs.
+- `input/` — humans drop documents here. Ingestion is agent-driven on command: download
+  to tmp, READ the document (synthesis is the job), write/merge the new `.md` under
+  `docs/`, then `$GAPI move` the original `input/` → `processed/` — a metadata
+  operation (AGENTS.md rule 11: file content never flows through LLM context for the
+  purpose of transfer, and the agent never recites a document into chat as its
+  "knowledge base update").
+- `processed/` — documents the agent has already ingested.
+- `knowledge_base/` — the daily backup snapshot of `data/project/docs/`, uploaded by
+  the 03:00 UTC agent cron job (invariant 3: the backup is sacred — git commit BEFORE
+  upload, server-side file count verified, and a silent failure is a production
+  incident: loud group post + journal note).
 
-**Editorial policy (unchanged in spirit):** the agent files drafts into `inbox/`; the
-weekly triage moves them into the Drive `docs/**` (via `$GAPI upload`) and posts a
-*"what I filed"* summary to the group — humans keep editorial control with near-zero
-effort. `journal/`, `inbox/` and `.archive/` remain agent-writable; Drive `docs/`
-placement always goes through triage.
+**Editorial policy (v7):** knowledge-base changes are written straight under `docs/` —
+the git history is the safety net and the daily Drive backup is the off-site copy (the
+v6.1 per-write write-through upload is REVERSED; `journal/` stays local and rides the
+daily backup). The local `inbox/` remains the agent's scratch drop zone for unfiled
+drafts; Drive `input/` is for documents humans drop. `.archive/` stays move-not-delete.
 
-**Query map (written into AGENTS.md):** mission & goals → `docs/product/brief.md` on
-Drive (read before any major ask; found via `knowledge_search` or a live `$GAPI`
-read); questions about the project → `knowledge_search`, then confirm against the live
-file; status/activity → `journal/` by date or the `checkins_by_date` tool; tasks →
-`kanban_*` tools (never files); "what's new" → `inbox/` triage; who/availability →
+**Query map (written into the generated runtime AGENTS.md):** mission & goals →
+`docs/product/brief.md` (read before any major ask); questions about the project →
+search the `docs/` files directly (ripgrep beats a cache); status/activity →
+`journal/` by date or the `checkins_by_date` tool; tasks → `kanban_*` tools (never
+files); "what's new" → Drive `input/` + local `inbox/`; who/availability →
 `member_list` (never a file).
 
-**Escalation triggers (documented, NOT implemented):** embeddings/vector RAG (the corpus
-outgrows FTS5 — phase-5 spike only), prefix indexes (a real query misses on prefix
-search), `llm-wiki`
+**Escalation triggers (documented, NOT implemented):** embeddings/vector RAG when plain
+file search degrades or the corpus outgrows grep (phase-5 spike only, T5.1 — the
+escape hatch that replaced the FTS5 index), `llm-wiki`
 (the team ever wants *distilled* knowledge packs — Hermes' bundled research skill is
 the ready-made answer), and `USER.md` (Hermes' native per-user context slot — the
 landing spot if per-member profiles are ever revived). Each stays a written trigger
-until the team decides (second-pass sweep, audit 2026-09-03). *(Former trigger
-"standalone sync scripts" FIRED 2026-09-05: the deterministic script is now the
-shipped design — §3/§11.)*
+until the team decides (second-pass sweep, audit 2026-09-03).
 
 **Loading:** the gateway runs with `data/project` as working directory, so `AGENTS.md`
 is injected into DM sessions automatically (Hermes discovers context files from the

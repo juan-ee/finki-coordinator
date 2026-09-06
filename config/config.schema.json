@@ -18,7 +18,7 @@
         "drive_root": {
           "type": "string",
           "minLength": 1,
-          "description": "Knowledge Drive root for the deterministic sync (v6.1: the bot account's own My Drive root)."
+          "description": "Drive backup + inbox root (v7: carries input/, processed/, knowledge_base/ — the daily backup of the Pi-local docs/ record; §12)."
         },
         "timezone": {
           "type": "string",

@@ -48,7 +48,7 @@ knowledge_search) is deleted. Invariants: **git safety net · synthesis-vs-copy-
 (rule 11) · the 03:00 UTC backup is load-bearing**. Order: T2.27 → T2.28 → T2.29 →
 (T2.30 ∥ T2.31) → T2.32 → T2.33 → T2.34 → T2.35.
 
-- [ ] **T2.27 `DOC` — fold v7 into the constitution & source of truth** — AGENTS.md:
+- [x] **T2.27 `DOC` — fold v7 into the constitution & source of truth** — AGENTS.md:
   mission line (Pi-local record, 8 tools, no sync script), repo map (drop syncing.py +
   sync_knowledge.py), rule 11 reworded as synthesis-vs-copy-pipe with Drive =
   backup + inbox. proposal.md: §1/§2/§3 bodies updated to v7 (§3 retitled, cache DDL
@@ -165,3 +165,20 @@ knowledge_search) is deleted. Invariants: **git safety net · synthesis-vs-copy-
 Prior log (T0.1–T2.26 — phase-2 gate forensics, review arbitrations,
 fabrication-episode records): `docs/roadmap-archive-2026-09-06.md`.
 Log new judgement calls and residuals here, newest first.
+
+- 2026-09-06 (T2.27): DOC task done directly. Scope calls: (a) the proposal **title +
+  Goal line** were folded to v7 alongside §1–§3 (a live header claiming Drive-as-source
+  would contradict the folded §3); the dated Round-5 D1–D4 block stays as history.
+  (b) §5 phases table / §7 resolved-decisions / §9–§12 left untouched (dated history /
+  changelogs — the acceptance's "changelogs/gate history excepted"). (c) AGENTS.md repo
+  map drops `knowledge.py` (the FTS5 chunker) in addition to the spec's
+  `syncing.py` + `sync_knowledge.py` — the chunker is part of the cache indirection §12
+  deletes (T2.28 removes the module; the map is the *target* layout). Acceptance grep
+  (`grep -rn "Drive is the record\|knowledge_fts" --include=*.md`, excluding ROADMAP
+  spec blocks, archive, gate docs, .scratch): after T2.27 the only remaining .md hits
+  are `prompts/skills/knowledge/SKILL.md` (rewritten by T2.28) and
+  `prompts/persona.md` rule 6 (updated by T2.29) — transitional, each tagged with its
+  owning task. Residual for the owner: proposal §6 risk line ("local FTS5 index
+  covers text search") and §8 first-boot step 11 (creates the v6.1 knowledge-sync
+  cron) still describe v6.1 machinery — unowned by any Phase 2.5 task; recorded, not
+  actioned (rule 8).

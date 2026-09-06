@@ -13,10 +13,12 @@
 
 Build a clonable template repo that boots a Telegram-based async project coordinator on a
 Raspberry Pi 5 (Docker, hermes-agent at a pinned ref), with: a Python coordinator plugin
-(SQLite members/checkins/settings + knowledge cache, 9 tools), UTC-anchored timezone-safe
-cron scheduling, a dedicated Google Drive knowledge base synced by a deterministic script
-(v6.1) and searched through Hermes' built-in google-workspace skill ($GAPI) with a local
-SQLite FTS5 index, and an OpenExecutive-derived persona.
+(SQLite members/checkins/settings, 8 tools), UTC-anchored timezone-safe cron scheduling,
+a Pi-local knowledge base — all `.md` live in `data/project/docs/` (git-versioned); the
+agent writes them directly and reads them back as plain files — a static MkDocs site of
+that folder exposed through a Cloudflare Tunnel, Google Drive demoted to a daily
+`knowledge_base/` backup + an `input/`→`processed/` document inbox ($GAPI), and an
+OpenExecutive-derived persona.
 Quality bar: it must survive being cloned and run by a stranger with only the README.
 
 ## Repository map (target layout)
@@ -33,13 +35,11 @@ src/coordinator/           ← the Python package (pure core, testable)
   config.py                ← load + validate config.yaml against the JSON Schema
   scheduling.py            ← ALL timezone→cron math (pure, no I/O)
   db.py                    ← connection factory (WAL, busy_timeout) + migrations
-  repositories.py          ← MembersRepo / CheckinsRepo / SettingsRepo / KnowledgeRepo
-  knowledge.py             ← markdown → FTS5 chunking (pure, no I/O)
-  syncing.py               ← knowledge-sync plan: watermark diff, file selection (pure, no I/O; v6.1)
+  repositories.py          ← MembersRepo / CheckinsRepo / SettingsRepo
   handlers.py              ← tool payload validation + orchestration + relay building
   hermes_plugin.py         ← thin adapter: register tools with Hermes (no logic here)
   schema.sql               ← SQLite DDL (v6 schema from proposal §1)
-scripts/                   ← init_db.py · generate_agents_md.py · setup.sh · allow.sh · backup.sh · sync_knowledge.py (v6.1)
+scripts/                   ← init_db.py · generate_agents_md.py · setup.sh · allow.sh · backup.sh
 config/                    ← config.example.yaml · config.schema.json · members.seed.yaml
 prompts/                   ← persona.md (→ SOUL.md) · triage.md · skills/check-in · skills/digest
 templates/                 ← brief.md · adr.md · meeting-notes.md · proposal.md (doc templates)
@@ -76,12 +76,15 @@ docker/                    ← HERMES_REF pin file + compose notes
    (e.g., 2026-03-29 and 2026-10-25 EU transitions), never on "local now".
 10. **Runtime state.** Never touch `data/**`, never commit `.env`, never add a dependency
     that isn't in the task spec.
-11. **Deterministic knowledge sync.** File contents never flow through LLM context. The
-    Drive→cache sync is a script (`scripts/sync_knowledge.py` — hermes cron + `make sync`)
-    that ingests through the plugin's own chunker/repository; the agent only READS the
-    cache (`knowledge_search`) and confirms against the live Drive file. (Added v6.1,
-    2026-09-05, after the phase-2 gate caught the agent-mediated sync inventing file
-    contents and stalling batch-shuttling; proposal §11.)
+11. **Synthesis vs copy-pipe.** The agent may READ `input/` documents and WRITE
+    new/updated `.md` under `docs/` — transformation is the job. File MOVEMENT
+    (`input/` → `processed/`) and Drive uploads are `$GAPI` CLI operations the agent
+    drives as commands — **file content never flows through LLM context for the purpose
+    of transfer**. The agent never recites a document into chat as its "knowledge base
+    update", and never hand-copies files verbatim file-by-file as "sync". (Added v6.1
+    after the phase-2 gate caught the agent-mediated sync inventing file contents;
+    generalized to v7, 2026-09-06 — the Drive→cache sync machinery is deleted and the
+    Pi is the record; proposal §11/§12.)
 
 ## Tool result contract (every handler)
 
