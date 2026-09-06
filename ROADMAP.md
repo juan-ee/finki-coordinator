@@ -622,10 +622,13 @@ Pi/human; the agent only produces/refreshes the verification script.
   in-container cron runs as uid 1000 — a --user-aware transport is a possible
   small follow-up.
   Pi follow-through: git pull + `uv run ./scripts/setup.sh` (env keys exported by
-  grep — the dead `[gdrive]` stanza still breaks `source .env`); step 8/8 on the
-  live token expected to print ok (owner 1000, mode 600); the updated knowledge
-  SKILL.md lands at ~/.hermes/skills/coordinator-knowledge/SKILL.md byte-identical
-  (no restart). Runtime acceptance of the changed one-shot line (the bot running
+  grep — the dead `[gdrive]` stanza still breaks `source .env`). **ACCEPTANCE
+  (agent-run over SSH, 2026-09-06):** Pi at e4499e3; step 8/8 on the live token →
+  "ok: owner 1000, mode 600 — writable by uid 1000" + the exec-user NOTE printing
+  `docker compose exec --user 1000 gateway <command>`; the updated knowledge
+  SKILL.md landed at ~/.hermes/skills/coordinator-knowledge/SKILL.md
+  byte-identical (diff clean); container untouched (Up 21h — no restart, as
+  designed). Runtime acceptance of the changed one-shot line (the bot running
   the pinned interpreter form after an upload) rides the gate's step-6 digest run.
 
 - 2026-09-06 T2.25 — prompt hardening + template-owned skills install. Review verdict:
