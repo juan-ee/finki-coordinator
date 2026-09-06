@@ -476,7 +476,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   `settings`. Only after T2.18/T2.23 are stable; revisit if a real deletion leaves
   stale chunks that matter. Push webhooks (`changes.watch`) stay REJECTED: they need
   a public HTTPS receiver (no inbound ports by design).
-- [ ] **T2.25 `DOC` — prompt hardening from the phase-2 gate drift findings** —
+- [x] **T2.25 `DOC` — prompt hardening from the phase-2 gate drift findings** —
   knowledge SKILL.md: add the auto-refresh-on-search line (T2.23 read gate, the
   runtime behavior the gate observed), an explicit "never read local kb_sync-style
   copies — they are not a designed artifact; read the LIVE Drive original", and
@@ -490,6 +490,12 @@ Pi/human; the agent only produces/refreshes the verification script.
   on the mechanism (setup.sh install vs curated). Salvage verification note from the
   removed runtime skill: does `cronjob action: update` really require `job_id`
   (our relays emit `action: edit` + `name`; name-based edit verified at this pin).
+  *(Done 2026-09-06 — owner call: setup.sh install; new step 4/7 copies
+  `prompts/skills/*/SKILL.md` → `$HERMES_HOME/skills/coordinator-<name>/SKILL.md`,
+  overwrite every run; Hermes-style frontmatter on all four skills;
+  `schedules.md` → `schedules/SKILL.md` for the uniform glob. Review: no hard
+  violations after one fix round; Notes log carries the judgement calls and the
+  record-only salvage note.)*
 - [ ] **T2.26 `fix` — Google-token permissions + in-container one-shot ergonomics**
   *(surfaced by the phase-2 gate 2026-09-05)* — the token file
   (`~/.hermes/google_token.json`) ended up root-owned mid-run, breaking every
@@ -556,6 +562,40 @@ Pi/human; the agent only produces/refreshes the verification script.
 ## Notes log
 
 *(agents append here: date, task, deviation/observation)*
+
+- 2026-09-06 T2.25 — prompt hardening + template-owned skills install. Review verdict:
+  no hard violations after one fix round (two fresh axes, fixed point 00e3f9ee; fix
+  deltas re-reviewed clean on both). The round: (1) completed the /7 renumber — the
+  [1/6]/[2/6] banners survived the first pass, contradicting the renumbered docstring
+  (hard finding on BOTH axes; regression pin added: every `[n/7]` banner asserted in
+  the dry-run plan); (2) hardened the knowledge skill's journal wording from "that
+  folder exists" to "the designed destination; if that folder is missing, create it
+  there first" — fresh deployments get no false premise (Spec-axis low finding; on
+  the live Pi `journal/` was operator-created in-gate, gate record + owner facts).
+  Arbitrations: rule-2 atomicity question (commit names two work items) dissolved on
+  the spec — T2.25 is ONE ROADMAP task whose block names both the install mechanism
+  and the four knowledge additions; the `schedules.md` → `schedules/SKILL.md` move is
+  the enabling change implied by the owner's `prompts/skills/*/SKILL.md` glob (same
+  ruling class as T2.19's mount). Judgement calls: (a) the `coordinator-<name>`
+  mapping lives in three places (setup.sh dest, each frontmatter `name:`, test
+  helper) — pinned together by the frontmatter test, no single-sourcing at this
+  scale (extraction would be Speculative Generality, per the Standards nit on the
+  same shape for the step total "7"); (b) test-side `subprocess.run(...)` duplication
+  (5×) recorded, not extracted — pre-existing pattern, rule 8; (c) skill elaborations
+  ("never run a manual sync just to read", "relay that in your reply", "never drop
+  journal files in the Drive root") each track a runtime fact (the T2.23 read gate
+  announces refreshes via the result summary; the gate's root-upload drift); (d) the
+  auto-refresh line documents the owner-shipped T2.23 design, adds no behavior.
+  Frontmatter format pinned from observed runtime evidence: the removed curator
+  skill's own header (`name`/`description`/`category: productivity`, name = dir name)
+  read from its Pi backup; top-level `skills/<dir>/` loading proven at this pin by
+  that skill and `kanban-management`. RECORD-ONLY, pending verification, never to be
+  tested against the live bot: the removed curator skill claimed `cronjob action:
+  update` requires `job_id` — our relays emit `action: edit` + `name`, and name-based
+  edit was verified at this pin in the phase-1 upstream evaluation; check it only if
+  a real cron edit ever fails. Pi follow-through: git pull + `uv run ./scripts/setup.sh`
+  (env keys exported by grep — the dead `[gdrive]` stanza still breaks `source .env`,
+  recorded 2026-09-05); fresh-DM skills ask appended below as acceptance evidence.
 
 - 2026-09-05 T2.21 — DOC part done (gate-run part pending on the Pi; box stays unticked
   per the T2.17 MANUAL-GATE pattern). docs/verify/phase2.md re-based on the v6.1 world:
