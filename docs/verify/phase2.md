@@ -104,6 +104,13 @@ decides).
         full redirected URL; (4) `setup.py --auth-code "<pasted URL>"` then
         `setup.py --check` → must print AUTHENTICATED. Then re-run THIS step and
         resume the gate top-to-bottom.
+      **RUN THE OAUTH AS THE RUNTIME USER, NEVER root/sudo (T2.26):** every
+      in-container `setup.py` / gws CLI command goes through
+      `docker compose exec --user 1000 gateway …` (the container's `HERMES_UID`).
+      Bare `docker compose exec` defaults to root, and a root-run OAuth saves
+      `google_token.json` root-owned — every later refresh write by uid 1000 then
+      fails (the 2026-09-05 step-5 incident). setup.sh step 8/8 now checks and
+      repairs exactly this, and the sync script's pre-flight fails loudly on it.
 
       **↻ RESOLVED same day (2026-09-05):** the OAuth was completed through the
       skill's own `setup.py` flow — no workaround. Client credentials reused from
@@ -127,9 +134,16 @@ other fallback — the v6 design has none on purpose (proposal §6.9).
 ## 2. Knowledge sync round-trip — DOWN (Drive → cache) — v6.1: the deterministic script
 
 The cache is refreshed by `scripts/sync_knowledge.py` — host: `make sync`; in-container
-one-shot: `python3 /opt/data/scripts/sync_knowledge.py` — never by the agent
-(AGENTS.md hard rule 11). The agent-mediated run below is kept as the incident record
-that motivated the switch (proposal §11).
+one-shot: `python3 /opt/data/scripts/sync_knowledge.py` with the container's default
+`python3` — the Hermes venv, `/opt/hermes/.venv/bin/python3` (the T2.23 freshness-gate
+subprocess form: ONE interpreter carries the coordinator imports — the script adds
+`/opt/data/plugins` itself — AND the CLI's googleapiclient; never compose PATHs to
+`/opt/data/venvs/gapi` or use `/usr/bin/python3`, which lacks googleapiclient — the
+split pair is what made the 2026-09-05 one-shot look "not self-sufficient"). Bulk syncs
+are never agent-mediated (AGENTS.md hard rule 11) — the agent-mediated run below is
+kept as the incident record that motivated the switch (proposal §11); the agent's ONE
+sanctioned run is the post-upload write-through one-shot (step 5, pinned in the
+knowledge skill).
 
 - [x] **Test data first (Drive web UI):** in the Drive root create/upload 2 small
       markdown docs — `docs/notes/decisión.md` containing the word **decisión** and a
@@ -243,10 +257,11 @@ docker compose exec gateway python3 -c "import sqlite3; c = sqlite3.connect('/op
 - [ ] DM: *"Write a short journal note for today and make sure it reaches Drive."* →
       the agent writes `journal/YYYY-MM-DD.md` locally and uploads it via
       `$GAPI drive upload`, then runs the sync one-shot (mandatory write-through:
-      `python3 /opt/data/scripts/sync_knowledge.py` — the transcript must show the
-      counts line). Verify in the **Drive web UI**: the file exists with today's
-      content, and a DM search finds it immediately. Record the Drive path:
-      ____________.
+      `python3 /opt/data/scripts/sync_knowledge.py` under the container's default
+      Hermes-venv `python3` — the pinned T2.23 subprocess form, see step 2 — the
+      transcript must show the counts line). Verify in the **Drive web UI**: the
+      file exists with today's content, and a DM search finds it immediately.
+      Record the Drive path: ____________.
       **✗ 2026-09-05 — FAIL as run (3 defects):**
       (1) local write OK (`data/project/journal/2026-09-05.md`, 164 bytes);
       (2) upload landed in the DRIVE ROOT as `journal-2026-09-05.md` — no `journal/`
@@ -304,8 +319,11 @@ docker compose exec gateway python3 -c "import sqlite3; c = sqlite3.connect('/op
 - [ ] At the digest time (or after conversationally creating/adjusting a test digest
       job for a near time — restore it afterwards): the digest runs, writes the
       journal entry, **uploads it to Drive** (visible in the browser) and runs the
-      write-through sync, and posts the group summary. An upload failure is reported
-      in one line at the end of the journal entry — drift must be visible, not silent.
+      write-through sync (the same pinned one-shot as step 5:
+      `python3 /opt/data/scripts/sync_knowledge.py` on the container's default
+      Hermes-venv `python3` — the counts line must appear in the job output), and
+      posts the group summary. An upload failure is reported in one line at the end
+      of the journal entry — drift must be visible, not silent.
 
 ## 7. Runtime AGENTS.md reflects v6
 

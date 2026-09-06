@@ -4,6 +4,7 @@ and the runtime skill-store install (T2.25) that always overwrites."""
 
 import os
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -115,10 +116,17 @@ def test_dry_run_exits_zero_writes_nothing_and_leaks_no_secrets(tmp_path: Path) 
         assert str(hermes_home / "skills" / f"coordinator-{name}" / "SKILL.md") in stdout, (
             f"dry-run plan misses the coordinator-{name} install"
         )
-    # Renumber precedent (T1.7/T2.12/T2.25): every step banner carries the current
-    # total, so the printed plan can never contradict the docstring's step list.
-    for n in range(1, 8):
-        assert f"[{n}/7]" in stdout, f"step banner [{n}/7] missing from the dry-run plan"
+    # Renumber precedent (T1.7/T2.12/T2.25/T2.26): every step banner carries the
+    # current total, so the printed plan can never contradict the docstring's list.
+    for n in range(1, 9):
+        assert f"[{n}/8]" in stdout, f"step banner [{n}/8] missing from the dry-run plan"
+
+    # T2.26 (b)/(f): the plan must carry the Google-token permission check and the
+    # exec-user guard (docker compose exec defaults to root in this container).
+    assert "== [8/8] Google token permissions" in stdout
+    assert "google_token.json" in stdout
+    assert "docker compose exec --user" in stdout
+    assert "ROOT" in stdout
 
     for value in SECRET_VALUES:
         assert value not in stdout + proc.stderr, "dry-run echoed a secret value"
@@ -256,3 +264,112 @@ def test_real_mode_skill_install_overwrites_mutated_files(tmp_path: Path) -> Non
         encoding="utf-8"
     )
     assert installed.read_text(encoding="utf-8") == source, "template did not win"
+
+
+# --- T2.26 (b): Google-token permission check (step 8/8) --------------------
+#
+# The 2026-09-05 incident: ~/.hermes/google_token.json flipped to root-owned, and
+# every token refresh write by the container's runtime uid failed. setup.sh runs
+# on the host with operator privileges: it checks the token against the container
+# runtime uid and repairs it when it can (sudo remedy otherwise).
+
+
+def _write_token(hermes_home: Path, mode: int) -> Path:
+    """A fake Google token at the path setup.sh checks, with the given mode."""
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    token = hermes_home / "google_token.json"
+    token.write_text('{"refresh_token": "fixture"}', encoding="utf-8")
+    token.chmod(mode)
+    return token
+
+
+def _run_setup(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    """Run setup.sh (real mode) with the given fixture env."""
+    return subprocess.run(
+        ["bash", str(SETUP_SH)],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        env=env,
+        check=False,
+    )
+
+
+def test_real_mode_reports_ok_token_untouched(tmp_path: Path) -> None:
+    """A writable token (owner == container uid, mode 600) prints ok and is untouched."""
+    token = _write_token(tmp_path / "hermes-home", 0o600)
+
+    proc = _run_setup(_real_mode_env(tmp_path))
+
+    assert proc.returncode == 0, f"real run failed:\n{proc.stdout}\n{proc.stderr}"
+    assert "ok:" in proc.stdout
+    assert stat.S_IMODE(token.stat().st_mode) == 0o600
+
+
+def test_real_mode_repairs_mode_mangled_token_owned_by_container_uid(tmp_path: Path) -> None:
+    """Operator-owned token with the write bit lost: real mode chmod-repairs it."""
+    token = _write_token(tmp_path / "hermes-home", 0o444)
+
+    proc = _run_setup(_real_mode_env(tmp_path))
+
+    assert proc.returncode == 0, f"real run failed:\n{proc.stdout}\n{proc.stderr}"
+    assert "repaired" in proc.stdout
+    assert stat.S_IMODE(token.stat().st_mode) == 0o600
+
+
+def test_real_mode_prints_sudo_remedy_for_foreign_owned_token_and_touches_nothing(
+    tmp_path: Path,
+) -> None:
+    """The incident shape: a token the container uid does not own gets the exact
+    sudo chown/chmod remedy; a non-root operator run repairs nothing itself."""
+    token = _write_token(tmp_path / "hermes-home", 0o644)
+    env = _real_mode_env(tmp_path)
+    env["HERMES_UID"] = "4242"  # a container uid that owns nothing here
+    env["HERMES_GID"] = "4242"
+
+    proc = _run_setup(env)
+
+    assert proc.returncode == 0, f"real run failed:\n{proc.stdout}\n{proc.stderr}"
+    assert "sudo chown 4242:4242" in proc.stdout
+    assert str(token) in proc.stdout
+    assert "chmod 600" in proc.stdout
+    assert stat.S_IMODE(token.stat().st_mode) == 0o644, "non-root run must not repair"
+
+
+def test_dry_run_prints_remedy_but_never_touches_a_broken_token(tmp_path: Path) -> None:
+    """Dry-run names the fix for a broken token and writes nothing (mode intact)."""
+    hermes_home = tmp_path / "hermes-home"
+    hermes_home.mkdir()
+    token = _write_token(hermes_home, 0o444)
+    env = {
+        "PATH": os.environ["PATH"],
+        "HOME": str(tmp_path / "home"),
+        "HERMES_HOME": str(hermes_home),
+        "PROJECT_DATA_ROOT": str(tmp_path / "data"),
+        **REQUIRED_ENV,
+    }
+    before = _snapshot(tmp_path)
+
+    proc = subprocess.run(
+        ["bash", str(SETUP_SH), "--dry-run"],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        env=env,
+        check=False,
+    )
+
+    assert proc.returncode == 0, f"dry-run failed:\n{proc.stdout}\n{proc.stderr}"
+    assert "chmod 600" in proc.stdout
+    assert str(token) in proc.stdout
+    assert stat.S_IMODE(token.stat().st_mode) == 0o444, "dry-run must not repair"
+    assert _snapshot(tmp_path) == before, "dry-run wrote under tmp roots"
+
+
+def test_real_mode_absent_token_prints_absent_not_error(tmp_path: Path) -> None:
+    """Pre-OAuth (no token yet): the check reports the token absent, setup succeeds.
+    (The ':' pins the check's own line — the tmp dir name contains 'absent'.)"""
+    proc = _run_setup(_real_mode_env(tmp_path))
+
+    assert proc.returncode == 0, f"real run failed:\n{proc.stdout}\n{proc.stderr}"
+    assert "absent:" in proc.stdout

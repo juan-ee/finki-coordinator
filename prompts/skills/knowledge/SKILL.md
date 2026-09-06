@@ -49,10 +49,16 @@ read via $GAPI. After a Drive-side deletion, chunks stay cached until the next
 - **After EVERY successful upload, make the new document findable: run the sync
   one-shot via your shell tool — `python3 /opt/data/scripts/sync_knowledge.py`**
   (the in-container equivalent of the host's `make sync`), then report the counts
-  line. The write-through only works if every writer runs it — skipping it leaves
-  your own upload unsearchable until the nightly job. If the sync fails, say so in
-  one line — drift must be visible, not silent. The script prints counts, paths and
-  the watermark only; never fetch file content into your context.
+  line. **Interpreter pin: run it with the container's default `python3` — the
+  Hermes venv, `/opt/hermes/.venv/bin/python3` — exactly as the freshness gate's
+  subprocess does. That one interpreter has both the coordinator imports (the
+  script adds `/opt/data/plugins` itself) and the CLI's googleapiclient. Never swap
+  the interpreter or prepend a PATH (`/opt/data/venvs/gapi/bin`, `/usr/bin/python3`)
+  — a split interpreter pair breaks the one-shot.** The write-through only works if
+  every writer runs it — skipping it leaves your own upload unsearchable until the
+  nightly job. If the sync fails, say so in one line — drift must be visible, not
+  silent. The script prints counts, paths and the watermark only; never fetch file
+  content into your context.
 - Drafts: file into `inbox/`; weekly triage uploads them into the Drive `docs/**` and
   announces what was filed.
 - Never edit Drive documents in place without reading their live version first —

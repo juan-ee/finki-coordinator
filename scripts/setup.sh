@@ -9,23 +9,28 @@
 # Usage: scripts/setup.sh [--dry-run]
 #
 # Steps:
-#   1/7 check required env keys (TELEGRAM_BOT_TOKEN, OPENROUTER_API_KEY)
-#   2/7 validate config/config.yaml via 'python -m coordinator.config validate'
-#   3/7 install prompts/persona.md -> ${HERMES_HOME:-$HOME/.hermes}/SOUL.md
-#   4/7 install prompts/skills/*/SKILL.md -> ${HERMES_HOME:-$HOME/.hermes}/skills/
+#   1/8 check required env keys (TELEGRAM_BOT_TOKEN, OPENROUTER_API_KEY)
+#   2/8 validate config/config.yaml via 'python -m coordinator.config validate'
+#   3/8 install prompts/persona.md -> ${HERMES_HOME:-$HOME/.hermes}/SOUL.md
+#   4/8 install prompts/skills/*/SKILL.md -> ${HERMES_HOME:-$HOME/.hermes}/skills/
 #       coordinator-<name>/SKILL.md (template-owned: overwrites on every run, same
 #       precedent as the SOUL.md install; no rebuild/restart needed — the runtime
 #       skill store lives on the ~/.hermes volume)
-#   5/7 apply Hermes config: model + cron.model pin + timezone UTC ('hermes config set',
+#   5/8 apply Hermes config: model + cron.model pin + timezone UTC ('hermes config set',
 #       with a printed manual fallback when the CLI is absent)
-#   6/7 enable the coordinator plugin + kanban toolset (plugins.enabled / top-level
+#   6/8 enable the coordinator plugin + kanban toolset (plugins.enabled / top-level
 #       toolsets — upstream opt-in gates; printed in-container fallback when the CLI
 #       is absent, since the plugin dir only materializes inside the container)
-#   7/7 seed data/project/ from project-template/ (first-boot files; existing files
+#   7/8 seed data/project/ from project-template/ (first-boot files; existing files
 #       are never overwritten)
+#   8/8 Google-token permission check (T2.26): the token must be writable by the
+#       container runtime uid — repair when possible, print the exact sudo remedy
+#       otherwise — plus the exec-user guard: 'docker compose exec' defaults to
+#       ROOT here, so token-writing commands need '--user <runtime uid>'.
 #
 # Overridable env knobs (defaults keep production behavior; overrides exist for
-# testability and relocated installs): HERMES_HOME, HERMES_MODEL,
+# testability and relocated installs): HERMES_HOME, HERMES_MODEL, HERMES_UID,
+# HERMES_GID (the container runtime identity the token must be writable by),
 # PROJECT_DATA_ROOT (seed target root, default $REPO_ROOT/data), CONFIG_YAML and
 # CONFIG_SCHEMA (validation inputs).
 set -euo pipefail
@@ -54,8 +59,37 @@ for arg in "$@"; do
   esac
 done
 
+# stat differs between GNU (Linux host, the Pi) and BSD (macOS host, dev smoke
+# tests): same st_uid/st_gid letters (%u/%g), different permission letter
+# (GNU %a vs BSD %Lp — BSD %a is the access TIME).
+if stat -c %u / >/dev/null 2>&1; then
+  stat_uid()  { stat -c %u "$1"; }
+  stat_gid()  { stat -c %g "$1"; }
+  stat_mode() { stat -c %a "$1"; }
+else
+  stat_uid()  { stat -f %u "$1"; }
+  stat_gid()  { stat -f %g "$1"; }
+  stat_mode() { stat -f %Lp "$1"; }
+fi
+
+# True when the mode's write bit covers uid (POSIX owner/group/other triple;
+# supplementary groups are not consulted — the real shapes are owner-euid or
+# root-owned, exactly the 2026-09-05 root-owned-token class). Args:
+#   uid gid owner-uid owner-gid mode(octal string, e.g. 644)
+uid_can_write() {
+  local uid=$1 gid=$2 owner=$3 ogid=$4 mode=$5
+  if (( uid == 0 )); then return 0; fi
+  if (( owner == uid )); then
+    (( (8#$mode & 8#200) != 0 ))
+  elif (( ogid == gid )); then
+    (( (8#$mode & 8#020) != 0 ))
+  else
+    (( (8#$mode & 8#002) != 0 ))
+  fi
+}
+
 step_env_check() {
-  echo "== [1/7] Required env keys (names only; values are never printed) =="
+  echo "== [1/8] Required env keys (names only; values are never printed) =="
   local missing=() key
   for key in "${REQUIRED_KEYS[@]}"; do
     if [[ -n "${!key:-}" ]]; then
@@ -78,7 +112,7 @@ step_env_check() {
 }
 
 step_validate_config() {
-  echo "== [2/7] Validate config/config.yaml (python -m coordinator.config validate) =="
+  echo "== [2/8] Validate config/config.yaml (python -m coordinator.config validate) =="
   if [[ ! -f "$CONFIG_YAML" ]]; then
     if [[ "$DRY_RUN" -eq 1 ]]; then
       echo "  WARNING: $CONFIG_YAML not found (the repo ships config/config.example.yaml only)"
@@ -97,7 +131,7 @@ step_validate_config() {
 }
 
 step_install_soul_md() {
-  echo "== [3/7] SOUL.md (persona) =="
+  echo "== [3/8] SOUL.md (persona) =="
   if [[ "$DRY_RUN" -eq 1 ]]; then
     if [[ -f "$PERSONA_SRC" ]]; then
       echo "  WOULD install: $PERSONA_SRC -> $HERMES_HOME_DIR/SOUL.md"
@@ -118,7 +152,7 @@ step_install_soul_md() {
 }
 
 step_install_skills() {
-  echo "== [4/7] Coordinator skills -> runtime skill store (template-owned, overwrite) =="
+  echo "== [4/8] Coordinator skills -> runtime skill store (template-owned, overwrite) =="
   local src name dest installed=0
   for src in "$REPO_ROOT"/prompts/skills/*/SKILL.md; do
     if [[ ! -f "$src" ]]; then
@@ -148,7 +182,7 @@ hermes_set() {
 }
 
 step_apply_hermes_config() {
-  echo "== [5/7] Hermes config (model + cron.model pin + timezone UTC) =="
+  echo "== [5/8] Hermes config (model + cron.model pin + timezone UTC) =="
   local model="$HERMES_MODEL_VALUE"
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "  WOULD run (via the hermes CLI if present; otherwise apply manually):"
@@ -178,7 +212,7 @@ print_in_container_fallback() {
 }
 
 step_enable_plugin_toolsets() {
-  echo "== [6/7] Coordinator plugin + kanban toolset (runtime config) =="
+  echo "== [6/8] Coordinator plugin + kanban toolset (runtime config) =="
   # Upstream gates user plugins behind config.yaml plugins.enabled (opt-in), and the
   # kanban tools' check_fn reads the top-level toolsets list (the all wildcard does NOT
   # enable kanban). Written via 'hermes config set' — a pure config write, so it needs
@@ -201,7 +235,7 @@ step_enable_plugin_toolsets() {
 }
 
 step_seed_project_template() {
-  echo "== [7/7] Seed data/project/ from project-template/ (existing files never overwritten) =="
+  echo "== [7/8] Seed data/project/ from project-template/ (existing files never overwritten) =="
   local template_dir="$REPO_ROOT/project-template"
   local target_root="$PROJECT_DATA_ROOT/project"
   if [[ ! -d "$template_dir" ]]; then
@@ -238,6 +272,52 @@ step_seed_project_template() {
   echo "  seeded: $target_root ($copied copied, $kept already existed)"
 }
 
+step_check_google_token() {
+  echo "== [8/8] Google token permissions (must be writable by the container runtime uid) =="
+  local token_path="$HERMES_HOME_DIR/google_token.json"
+  local container_uid="${HERMES_UID:-$(id -u)}"
+  local container_gid="${HERMES_GID:-$(id -g)}"
+  echo "  checking: $token_path (container runtime uid $container_uid)"
+  if [[ ! -f "$token_path" ]]; then
+    echo "  absent: no Google token yet (created by the in-container OAuth —"
+    echo "          docs/verify/phase2.md step 1; run it as the runtime user, see below)"
+  else
+    local owner ogid mode remedy
+    owner="$(stat_uid "$token_path")"
+    ogid="$(stat_gid "$token_path")"
+    mode="$(stat_mode "$token_path")"
+    if uid_can_write "$container_uid" "$container_gid" "$owner" "$ogid" "$mode"; then
+      echo "  ok: owner $owner, mode $mode — writable by uid $container_uid"
+    else
+      echo "  WARNING: owner $owner, mode $mode — NOT writable by uid $container_uid."
+      echo "  Every token refresh write by the runtime user fails in this state"
+      echo "  (the 2026-09-05 root-owned-token incident; sync_knowledge.py's"
+      echo "  pre-flight and the gws CLI both hit it)."
+      if [[ "$owner" -eq "$container_uid" ]]; then
+        remedy="chmod 600 $token_path"
+      else
+        remedy="sudo chown $container_uid:$container_gid $token_path && chmod 600 $token_path"
+      fi
+      if [[ "$DRY_RUN" -eq 1 ]]; then
+        echo "  dry-run: WOULD apply: $remedy"
+      elif [[ "$EUID" -eq 0 ]]; then
+        chown "$container_uid:$container_gid" "$token_path"
+        chmod 600 "$token_path"
+        echo "  repaired: owner $container_uid, mode 600"
+      elif [[ "$owner" -eq "$EUID" && "$owner" -eq "$container_uid" ]]; then
+        chmod 600 "$token_path"
+        echo "  repaired: mode 600 (you own the token and are the container uid)"
+      else
+        echo "  fix (run on the host):"
+        echo "    $remedy"
+      fi
+    fi
+  fi
+  echo "  NOTE: docker compose exec defaults to ROOT in this container — any token-writing"
+  echo "  command (OAuth setup.py, checks, the gws CLI) must run as the runtime user:"
+  echo "    docker compose exec --user $container_uid gateway <command>"
+}
+
 step_next_steps() {
   echo "== Next steps =="
   cat <<'NEXT_EOF'
@@ -260,6 +340,7 @@ main() {
   step_apply_hermes_config
   step_enable_plugin_toolsets
   step_seed_project_template
+  step_check_google_token
   step_next_steps
   echo "done."
 }

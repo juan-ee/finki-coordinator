@@ -16,7 +16,14 @@ Run targets (proposal §3):
 - Pi host:       python3 scripts/sync_knowledge.py --transport docker
                  (the CLI is reached via docker compose exec -T gateway ...)
 - in container:  python3 <HERMES_HOME>/scripts/sync_knowledge.py --transport direct
-                 (the nightly hermes cron job; scripts/setup.sh installs the script)
+                 (the nightly hermes cron job and the skill's post-upload one-shot;
+                 the compose mount provides the script at /opt/data/scripts/)
+                 Interpreter pin (T2.26): run it with the container's default
+                 `python3` — the Hermes venv at /opt/hermes/.venv/bin/python3, the
+                 exact form of the T2.23 freshness-gate subprocess ([sys.executable,
+                 this script]): one interpreter carries the coordinator imports
+                 (via the /opt/data/plugins mount) AND the CLI's googleapiclient.
+                 Never split the pair (PATH compositions, /usr/bin/python3).
 
 Flags: --resync wipes the cache and rebuilds from the full listing (the way to purge
 Drive-side deletions — the modifiedTime watermark's structural blind spot);
@@ -392,6 +399,51 @@ def _default_db_path() -> Path:
     return _repo_root() / "data" / "hermes" / "hermes-coord.db"
 
 
+DEFAULT_TOKEN_BASENAME = "google_token.json"
+"""The google-workspace skill's token file, directly under HERMES_HOME (observed:
+/opt/data/google_token.json in-container, ~/.hermes/google_token.json on a host)."""
+
+
+def default_token_path() -> Path:
+    """The Google token file where determinable: $HERMES_HOME, else the ~/.hermes
+    fallback (the same env handling as default_db_path / scripts/setup.sh's install)."""
+    home = os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes")
+    return Path(home) / DEFAULT_TOKEN_BASENAME
+
+
+def token_write_issue(
+    token_path: Path, *, euid: int | None = None, egid: int | None = None
+) -> str | None:
+    """Return the loud remedy when token_path exists but the effective uid cannot
+    write it (None = absent, root, or writable).
+
+    POSIX owner/group/mode arithmetic against the effective identity (supplementary
+    groups are not consulted — the real-world shapes are owner-euid or root-owned,
+    which is exactly the 2026-09-05 incident class). euid/egid inject the identity
+    for tests; None means the real os.geteuid()/os.getegid().
+    """
+    euid = os.geteuid() if euid is None else euid
+    egid = os.getegid() if egid is None else egid
+    if not token_path.exists() or euid == 0:
+        return None
+    st = token_path.stat()
+    if st.st_uid == euid:
+        writable = bool(st.st_mode & 0o200)
+        remedy = f"chmod 600 {token_path}"
+    else:
+        writable = bool((st.st_mode & 0o020) if st.st_gid == egid else (st.st_mode & 0o002))
+        remedy = f"sudo chown {euid}:{egid} {token_path} && chmod 600 {token_path}"
+    if writable:
+        return None
+    return (
+        f"Google token not writable by the effective uid: {token_path}"
+        f" (owner {st.st_uid}, mode {oct(st.st_mode & 0o777)}) vs uid {euid} —"
+        " the google-workspace CLI cannot save a refreshed token (the root-owned-"
+        "token failure, not an auth problem). Fix:"
+        f" {remedy}"
+    )
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     """Parse the flag surface (--db/--resync/--dry-run/--transport/--gapi-path)."""
     parser = argparse.ArgumentParser(
@@ -461,9 +513,16 @@ def _report(outcome: SyncOutcome) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """CLI entry: build the transport, run one round, print the report, exit 0/1."""
+    """CLI entry: token pre-flight, build the transport, run one round, report."""
     args = parse_args(argv)
     try:
+        # T2.26 pre-flight: a root-owned/unwritable token surfaced historically as a
+        # confusing google-workspace auth error — reject it loudly before any CLI
+        # subprocess or store access (the freshness-gate subprocess enters here too).
+        issue = token_write_issue(default_token_path())
+        if issue:
+            print(f"sync failed: {issue}", file=sys.stderr)
+            return 1
         transport = _build_transport(args)
         outcome = run_sync(
             args.db,

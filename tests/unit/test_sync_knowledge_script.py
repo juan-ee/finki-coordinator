@@ -417,3 +417,99 @@ def test_container_download_path_rejects_paths_outside_the_data_dir() -> None:
     """A download path the mount cannot deliver is a loud programming error."""
     with pytest.raises(sync_script.SyncError):
         sync_script.container_download_path(Path("/repo"), Path("/etc/nowhere/f-id"))
+
+
+# --- T2.26 (a): the Google-token writability pre-flight ---------------------
+#
+# The root-owned-token incident (phase-2 gate, 2026-09-05): the token existed but
+# the runtime uid could not write the refresh back, and the failure surfaced as a
+# confusing google-workspace auth error. The pre-flight must reject that state
+# LOUDLY — with the exact chown/chmod remedy — before any transport/CLI work.
+
+
+def _token(tmp_path: Path, mode: int) -> Path:
+    """A fake Google token at the CLI's checked path, chmod'ed to the given mode."""
+    token = tmp_path / "google_token.json"
+    token.write_text("{}", encoding="utf-8")
+    token.chmod(mode)
+    return token
+
+
+def test_token_write_issue_absent_or_writable_returns_none(tmp_path: Path) -> None:
+    """No token (pre-OAuth) or a writable token passes the pre-flight silently."""
+    assert sync_script.token_write_issue(tmp_path / "google_token.json") is None
+    assert sync_script.token_write_issue(_token(tmp_path, 0o600)) is None
+
+
+def test_token_write_issue_owner_blocked_by_mode_names_chmod(tmp_path: Path) -> None:
+    """Owner-euid token without the owner write bit: chmod remedy, no sudo needed."""
+    token = _token(tmp_path, 0o444)
+
+    issue = sync_script.token_write_issue(token)
+
+    assert issue is not None
+    assert str(token) in issue
+    assert f"chmod 600 {token}" in issue
+    assert "sudo" not in issue
+
+
+def test_token_write_issue_root_identity_never_fails(tmp_path: Path) -> None:
+    """uid 0 writes anything: a root operator is never told to fix its own file."""
+    token = _token(tmp_path, 0o444)
+
+    assert sync_script.token_write_issue(token, euid=0, egid=0) is None
+
+
+def test_token_write_issue_foreign_owner_suggests_sudo_chown(tmp_path: Path) -> None:
+    """The incident shape — token owned by another uid: exact sudo chown + chmod."""
+    token = _token(tmp_path, 0o644)
+    st = token.stat()
+    euid, egid = st.st_uid + 1, st.st_gid  # any non-owner, non-root uid
+
+    issue = sync_script.token_write_issue(token, euid=euid, egid=egid)
+
+    assert issue is not None
+    assert f"sudo chown {euid}:{egid} {token}" in issue
+    assert f"chmod 600 {token}" in issue
+
+
+def test_token_write_issue_group_writable_by_effective_gid_ok(tmp_path: Path) -> None:
+    """Group branch: foreign owner but group-write set for the effective gid → ok."""
+    token = _token(tmp_path, 0o664)
+    st = token.stat()
+
+    assert sync_script.token_write_issue(token, euid=st.st_uid + 1, egid=st.st_gid) is None
+
+
+def test_main_preflight_rejects_unwritable_token_before_any_transport(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Exit 1 with the remedy on stderr, BEFORE the transport exists: no CLI
+    subprocess, no DB — the confusing google-workspace auth error never happens."""
+    home = tmp_path / "hermes-home"
+    home.mkdir()
+    token = _token(home, 0o444)
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    built: list[object] = []
+    monkeypatch.setattr(sync_script, "_build_transport", lambda args: built.append(args))
+    db = tmp_path / "db" / "coord.db"
+
+    rc = sync_script.main(["--db", str(db)])
+
+    assert rc == 1
+    assert built == [], "the transport must not be built past a failed pre-flight"
+    assert not db.exists(), "the pre-flight fires before any store is touched"
+    err = capsys.readouterr().err
+    assert str(token) in err
+    assert "chmod 600" in err
+
+
+def test_default_token_path_follows_hermes_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """$HERMES_HOME/google_token.json in-container; the ~/.hermes fallback on a host."""
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "opt-data"))
+    assert sync_script.default_token_path() == tmp_path / "opt-data" / "google_token.json"
+
+    monkeypatch.delenv("HERMES_HOME")
+    assert sync_script.default_token_path() == Path.home() / ".hermes" / "google_token.json"
