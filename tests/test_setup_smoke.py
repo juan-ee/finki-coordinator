@@ -28,7 +28,7 @@ SECRET_VALUES = tuple(REQUIRED_ENV.values())
 
 # T2.25: the template-owned skills installed into the runtime skill store, one
 # directory per skill under $HERMES_HOME/skills/coordinator-<name>/.
-SKILL_NAMES = ("check-in", "digest", "knowledge", "schedules")
+SKILL_NAMES = ("check-in", "digest", "inbox", "knowledge", "schedules", "backup")
 
 
 def _snapshot(*roots: Path) -> list[tuple[str, int]]:

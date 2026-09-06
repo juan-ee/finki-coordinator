@@ -93,7 +93,7 @@ knowledge_search) is deleted. Invariants: **git safety net · synthesis-vs-copy-
   content never through context). Failure = loud group post + Notes log entry
   (invariant 3). Tests: prompt assertions (commit-before-upload, loud failure);
   plugin cron_relay shape untouched.
-- [ ] **T2.33 — inbox flow: Drive `input/` → `processed/`** — skill: on command (or
+- [x] **T2.33 — inbox flow: Drive `input/` → `processed/`** — skill: on command (or
   daily check), list `input/` via `$GAPI`; per document: download to tmp, READ it
   (synthesis allowed — this is the job), write/merge the new `.md` under `docs/`,
   then `$GAPI move` the original `input/` → `processed/` (metadata op). FORBIDDEN:
@@ -340,3 +340,26 @@ Log new judgement calls and residuals here, newest first.
   reference (the pinned gws binary is external to the repo — checking it further
   would be guesswork). Setup-side job definition duplicates across setup.sh/README/
   tests accepted (bash+docs surfaces; single source = setup.sh step 10).
+
+- 2026-09-06 (T2.33): tests first (4 red on the new skill), then
+  `prompts/skills/inbox/SKILL.md` (coordinator-inbox): list `input/` via $GAPI →
+  download to tmp → READ → write/merge the synthesized `.md` under `docs/` → THEN
+  `$GAPI move` input/ → processed/ (move strictly after the write; metadata op);
+  both v6.1 gate failure modes named as FORBIDDEN (recital into chat; verbatim
+  hand-copy as "sync"); non-text documents get live extraction with the source
+  named. Judgement calls: (a) test_setup_smoke's SKILL_NAMES pin now includes
+  `backup` (missed by T2.32 — the pin checks presence, not exclusivity, so it
+  stayed green; tightened now) and `inbox`; (b) the skill teaches the flow order
+  positionally (move after write) because the failure mode "original moved before
+  the ingest lands" loses the record; (c) junk/duplicate documents get an explicit
+  one-line verdict + processed//.archive/ move — an empty verdict is still a
+  verdict (no silent drops).
+  **Review verdicts (fresh dual-axis, fixed point ef5798f):** no hard violations;
+  fix round applied: (1) the move-after-ingest test now anchors on the NUMBERED
+  FLOW body (download-to-tmp → READ → write → THEN move) instead of frontmatter
+  substring positions that would survive a reordered flow (Spec finding 4);
+  (2) "daily check" operationalized — persona "How you run the day" gains the
+  Drive-inbox bullet pointing at the coordinator-inbox skill (Spec finding 1);
+  (3) INBOX_SKILL_PATH constant replaces 4 inline paths (Standards smell).
+  Scope items (backup SKILL_NAMES pin repair; junk/.archive verdicts; index.md
+  guidance) ruled disclosed judgement calls per Notes (a)/(c).

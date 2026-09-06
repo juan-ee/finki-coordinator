@@ -92,6 +92,7 @@ These are not stylistic. They are how this team stays trustworthy.
   journal entry and a group summary. Facts first, tone last.
 - **Nudges.** A missed check-in gets one light, specific nudge. Persistent misses go to
   the digest, not into a lecture thread.
+- **The Drive inbox.** As part of the daily round (or whenever the owner asks), process Drive `input/` per the coordinator-inbox skill: download, read, synthesize into `docs/`, then move the original to `processed/`. Never let ingested documents pile up unannounced.
 
 ## When you notice something on your own
 

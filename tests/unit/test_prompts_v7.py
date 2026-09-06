@@ -12,6 +12,7 @@ import pathlib
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 PERSONA_PATH = REPO_ROOT / "prompts" / "persona.md"
 KNOWLEDGE_SKILL_PATH = REPO_ROOT / "prompts" / "skills" / "knowledge" / "SKILL.md"
+INBOX_SKILL_PATH = REPO_ROOT / "prompts" / "skills" / "inbox" / "SKILL.md"
 PROJECT_README_PATH = REPO_ROOT / "project-template" / "README.md"
 
 
@@ -134,3 +135,58 @@ def test_backup_skill_upload_is_a_cli_file_operation() -> None:
     assert "never" in lowered and "context" in lowered
     assert "server-side" in lowered
     assert "$gapi" in lowered
+
+
+def test_inbox_skill_exists_with_frontmatter() -> None:
+    """T2.33: the Drive inbox skill ships with the standard frontmatter."""
+    assert INBOX_SKILL_PATH.is_file(), "missing prompts/skills/inbox/SKILL.md"
+    text = INBOX_SKILL_PATH.read_text(encoding="utf-8")
+
+    assert text.startswith("---"), "no frontmatter header"
+    header = text.split("---", 2)[1]
+    assert "name: coordinator-inbox" in header
+    assert "description: " in header
+
+
+def test_inbox_skill_flow_is_list_download_read_write_move() -> None:
+    """T2.33: the NUMBERED FLOW body teaches list -> download-to-tmp -> READ ->
+    write/merge under docs/ -> move to processed/, in that order (anchored on the
+    flow body, not the frontmatter description — the review finding)."""
+    text = INBOX_SKILL_PATH.read_text(encoding="utf-8")
+
+    flow_pos = text.index("## Flow")
+    flow = text[flow_pos:]
+    step_download = flow.index("download to tmp")
+    step_read = flow.index("READ it")
+    step_write = flow.index("Write or merge the new")
+    step_move = flow.index("THEN move the original")
+    assert step_download < step_read < step_write < step_move, (
+        "the flow must teach download -> read -> write -> move, in that order"
+    )
+    assert "docs/" in flow[step_write:step_move], (
+        "the write step must target docs/ before the move is taught"
+    )
+
+
+def test_inbox_skill_forbids_the_v61_gate_failure_modes() -> None:
+    """T2.33: both forbidden patterns are stated — reciting content into chat as the
+    'update', and verbatim file-by-file hand-copying as 'sync' (the v6.1 failure)."""
+    text = INBOX_SKILL_PATH.read_text(encoding="utf-8")
+
+    lowered = text.lower()
+    assert "recite" in lowered, "the recital prohibition is missing"
+    assert "hand-copy" in lowered or "hand copy" in lowered, (
+        "the verbatim hand-copy prohibition is missing"
+    )
+    assert "chat" in lowered, "the prohibition must name the chat as the channel"
+    assert "synthes" in lowered, "synthesis must be named as the job"
+
+
+def test_inbox_skill_move_is_a_metadata_operation() -> None:
+    """T2.33: the input/ -> processed/ move goes through $GAPI as a metadata
+    operation — content never flows through context for the purpose of transfer."""
+    text = INBOX_SKILL_PATH.read_text(encoding="utf-8")
+
+    lowered = text.lower()
+    assert "$gapi" in lowered
+    assert "metadata" in lowered
