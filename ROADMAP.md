@@ -596,6 +596,20 @@ Pi/human; the agent only produces/refreshes the verification script.
   a real cron edit ever fails. Pi follow-through: git pull + `uv run ./scripts/setup.sh`
   (env keys exported by grep — the dead `[gdrive]` stanza still breaks `source .env`,
   recorded 2026-09-05); fresh-DM skills ask appended below as acceptance evidence.
+  **ACCEPTANCE (runtime evidence, 2026-09-06):** fresh DM session, operator asked the
+  bot for its skills → the reply lists ALL FOUR template skills by exact name, grouped
+  first under "Coordinación del equipo (mi pan de cada día)", with trigger
+  descriptions mirroring the installed frontmatter (gist, verbatim):
+  "- coordinator-check-in — cuando abre la ventana de check-in de un miembro: hago el
+  saludo, registro done/next/blockers. / - coordinator-digest — el job de las 17:00:
+  convierte los check-ins del día en entrada de journal + resumen al grupo. /
+  - coordinator-schedules — cuando pides recalcular horarios de check-in (regla: los
+  cron_relay se pasan verbatim, nunca recalculo zonas horarias). /
+  - coordinator-knowledge — preguntas que necesitan docs del equipo: busco en el
+  cache y confirmo contra Drive." The schedules reply even carried the skill body's
+  verbatim-relay rule, and the removed `coordinator-operations` stays absent (the
+  install did not resurrect drift). Loader accepted the top-level `skills/coordinator-*/`
+  dirs from the ~/.hermes volume with zero restart — owner decision 3 verified live.
 
 - 2026-09-05 T2.21 — DOC part done (gate-run part pending on the Pi; box stays unticked
   per the T2.17 MANUAL-GATE pattern). docs/verify/phase2.md re-based on the v6.1 world:
