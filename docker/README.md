@@ -82,6 +82,45 @@ time for an on-demand rebuild. First use: `docker pull squidfunk/mkdocs-material
 > The record itself (`data/project/docs/`) is the agent's to write — the site is a
 > pure render of it. Never edit `data/site/` by hand: the next rebuild overwrites it.
 
+## The Cloudflare Tunnel + Access (v7, T2.31)
+
+One outbound-only `cloudflared` service exposes the site **and** the Hermes
+dashboard through a remotely-managed tunnel behind Cloudflare Access (Google SSO,
+team only). **No inbound ports** stays true: cloudflared dials Cloudflare's edge;
+nothing listens on the internet. The dashboard's fail-closed basic-auth gate
+(`HERMES_DASHBOARD=true` + the `HERMES_DASHBOARD_BASIC_AUTH_*` pair in `.env`)
+remains the second layer behind Access.
+
+**Owner click-path (manual, after the phase — no placeholder credentials ship in
+this repo):**
+
+1. **Dashboard on:** set `HERMES_DASHBOARD=true` and a strong basic-auth
+   username/password pair in `.env` (fail-closed: without the pair the dashboard
+   does not open).
+2. **Create the tunnel:** Cloudflare dashboard → **Zero Trust → Networks →
+   Tunnels → Create a tunnel** → type *Cloudflared* → name it (e.g.
+   `hermes-pi`) → copy the **token** into `.env` as `CLOUDFLARE_TUNNEL_TOKEN=...`
+   → install the connector by just bringing the stack up (`docker compose up -d`
+   runs our `cloudflared` service with `tunnel run`; do NOT run the dashboard's
+   copy-paste `docker run` line).
+3. **Public hostnames** (in the same tunnel's **Public Hostname** tab — configured
+   in the Cloudflare dashboard, never in files):
+   - `kb.<your-domain>` → service `HTTP://caddy:80` (the static site),
+   - `board.<your-domain>` → service `HTTP://host.docker.internal:9119` (the
+     Hermes dashboard; the `host-gateway` alias in compose makes the host's
+     loopback dashboard reachable from the cloudflared container).
+4. **Access policies:** Zero Trust → **Access → Applications → Add an application
+   → Self-hosted** for each hostname → identity provider **Google SSO** (team
+   accounts only; restrict by email list). A non-team Google account must be
+   rejected at the edge (phase-2.5 gate item 2).
+5. **Verify:** from a non-Pi device, `https://kb.<domain>` renders the site behind
+   the Google login; `https://board.<domain>` shows the dashboard (`/kanban` tab)
+   behind Access + basic auth; the Pi itself still works with zero inbound ports
+   (`docker compose ps` shows no published ports on gateway/cloudflared).
+
+Ecuador latency note (proposal §12): ~250 ms/click from Guayaquil is expected;
+static pages are edge-cached, dashboard actions are not.
+
 Note: upstream's compose also defines a localhost-only `dashboard` service;
 this template intentionally ships the `gateway` service only (all interaction
 is via Telegram).

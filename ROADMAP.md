@@ -77,7 +77,7 @@ knowledge_search) is deleted. Invariants: **git safety net · synthesis-vs-copy-
   127.0.0.1:8080); rebuild = host crontab line installed by setup.sh (every 15 min,
   UTC — dumb and LLM-free, rule-11 spirit) plus `make site-build` on demand. Tests:
   compose tests (service, ro mount, loopback bind); a docs fixture builds clean.
-- [ ] **T2.31 — cloudflared + dashboard exposure** — compose: `cloudflared` service
+- [x] **T2.31 — cloudflared + dashboard exposure** — compose: `cloudflared` service
   (official arm64 image, token via `.env`; remotely-managed tunnel — hostnames
   kb.* → caddy, board.* → dashboard are configured in the Cloudflare dashboard, not
   in files); env passthrough `HERMES_DASHBOARD` +
@@ -276,3 +276,34 @@ Log new judgement calls and residuals here, newest first.
   no scheduling-law arithmetic outside scheduling.py). Process incident: the first
   install-line splice accidentally dropped the crontab call and one debug run
   wrote to the REAL crontab — cleaned (it was empty before; verified 0 lines).
+
+- 2026-09-06 (T2.31): tests first (3 red): cloudflared service (official image,
+  token interpolated from .env rendered value-free offline, NO ports, host-gateway
+  alias for the host-loopback dashboard, depends_on caddy), token never a gateway
+  variable, dashboard trio as bare passthrough (rendered null offline). compose
+  scrub sets gained the tunnel + dashboard vars. .env.example gained the dashboard
+  + tunnel block; docker/README.md gained the owner click-path (create tunnel →
+  token → public hostnames kb.*/board.* in the CF dashboard → Access self-hosted
+  apps with Google SSO; "no inbound ports" restated). Judgement calls: (a) the
+  tunnel is remotely-managed ONLY — zero tunnel config in files, per spec; (b)
+  board.* targets http://host.docker.internal:9119 via the compose host-gateway
+  alias (the dashboard is a host-loopback service behind the host-networked
+  gateway) — the 9119 port is §12's diagram, verified upstream at the pin;
+  (c) compose renders an unset ${VAR} interpolation as "" (not null) — the test
+  pins "no value renders" (falsy), matching the gateway's bare-entry nulls in
+  spirit; (d) Cloudflare-side setup is owner-manual AFTER T2.34 (no placeholder
+  credentials; nothing invented).
+  **Review verdicts (fresh dual-axis, fixed point ec9d4ad):** Standards — no hard
+  violations; residuals recorded: floating image tags (`caddy:2`,
+  `cloudflare/cloudflared:latest`) — HERMES_REF-style pinning is an owner upgrade
+  decision; render-boilerplate duplication in test_compose (baseline-wide); .env.example
+  has no drift guard (residual). Spec — one hard finding, FIXED in-round: the
+  original design reached the dashboard via the `host.docker.internal:host-gateway`
+  alias, which resolves to the BRIDGE IP — a loopback-bound dashboard (§12:
+  127.0.0.1:9119) refuses that traffic, so board.* would fail at the tunnel. Fix:
+  cloudflared now runs `network_mode: host` like the gateway and dials both
+  loopback services directly (kb.* → 127.0.0.1:8080, board.* → 127.0.0.1:9119);
+  extra_hosts/depends_on removed; test pins network_mode == host; README hostname
+  targets updated. Notes (b) corrected accordingly (the "verified upstream at the
+  pin" claim referred to the dashboard's existence/tab, not its bind interface —
+  the bind stays loopback per §12).

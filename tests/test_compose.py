@@ -17,10 +17,11 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[1]
 HERMES_REF_FILE = REPO_ROOT / "docker" / "HERMES_REF"
 
-# Every variable docker-compose.yml passes through to the container (T2.12 contract:
-# Drive access is skill-managed via $GAPI — no Drive/rclone env vars exist anymore).
-# These are scrubbed from the subprocess environment so a developer's exported secrets
-# can never leak into the rendered config (and therefore into this test's output).
+# Every variable docker-compose.yml passes through to the gateway container (T2.12
+# contract: Drive access is skill-managed via $GAPI — no Drive/rclone env vars exist
+# anymore; T2.31 adds the dashboard exposure trio). These are scrubbed from the
+# subprocess environment so a developer's exported secrets can never leak into the
+# rendered config (and therefore into this test's output).
 PASSTHROUGH_VARS = frozenset(
     {
         "TELEGRAM_BOT_TOKEN",
@@ -28,8 +29,15 @@ PASSTHROUGH_VARS = frozenset(
         "TELEGRAM_GROUP_ALLOWED_CHATS",
         "TELEGRAM_GROUP_ALLOWED_USERS",
         "OPENROUTER_API_KEY",
+        "HERMES_DASHBOARD",
+        "HERMES_DASHBOARD_BASIC_AUTH_USERNAME",
+        "HERMES_DASHBOARD_BASIC_AUTH_PASSWORD",
     }
 )
+
+# The cloudflared tunnel token (T2.31): interpolated into the cloudflared service
+# from .env, never a gateway variable. Scrubbed like every other secret.
+TUNNEL_VARS = frozenset({"CLOUDFLARE_TUNNEL_TOKEN"})
 
 # Legacy v5 Drive/rclone variable NAMES: nothing interpolates them anymore, but a
 # developer who still exports them must not see them leak into any rendered output.
@@ -50,7 +58,7 @@ pytestmark = pytest.mark.skipif(docker_missing, reason="docker CLI not available
 
 def _render_config() -> subprocess.CompletedProcess[str]:
     """Render `docker compose config` from the repo root, offline and secret-free."""
-    scrub = PASSTHROUGH_VARS | LEGACY_DRIVE_VARS
+    scrub = PASSTHROUGH_VARS | LEGACY_DRIVE_VARS | TUNNEL_VARS
     env = {k: v for k, v in os.environ.items() if k not in scrub}
     # --env-file /dev/null: a developer's local .env must never be interpolated
     # into the rendered output — secrets stay null and the render is deterministic.
@@ -168,3 +176,64 @@ def test_gateway_service_publishes_no_ports() -> None:
     assert proc.returncode == 0, f"compose config failed:\n{proc.stderr}"
     gateway = yaml.safe_load(proc.stdout)["services"]["gateway"]
     assert not gateway.get("ports"), f"gateway publishes ports: {gateway.get('ports')}"
+
+
+# --- T2.31: the outbound-only tunnel + dashboard exposure -------------------------------
+
+
+def test_cloudflared_service_is_outbound_only_with_token_from_env() -> None:
+    """T2.31: a cloudflared service runs the remotely-managed tunnel — token via
+    .env interpolation, NO inbound ports, and HOST networking: both loopback
+    services (caddy :8080, dashboard :9119) must be dialable directly, since a
+    loopback-bound dashboard refuses bridge-gateway traffic (review finding)."""
+    proc = _render_config()
+
+    assert proc.returncode == 0, f"compose config failed:\n{proc.stderr}"
+    config = yaml.safe_load(proc.stdout)
+    cloudflared = (config.get("services") or {}).get("cloudflared")
+    assert cloudflared is not None, "cloudflared service missing"
+
+    image = str(cloudflared.get("image", ""))
+    assert image.startswith("cloudflare/cloudflared"), f"unexpected image: {image}"
+
+    # Token arrives by interpolation from the runtime env (.env). Offline, an unset
+    # variable renders as an empty string (compose interpolates with a warning) —
+    # the pinned property is that NO token value ever appears in files.
+    environment = cloudflared.get("environment") or {}
+    assert not environment.get("TUNNEL_TOKEN"), "token value must never render"
+    assert "TUNNEL_TOKEN" in environment, "TUNNEL_TOKEN env mapping missing"
+
+    # Outbound-only: dialing Cloudflare's edge needs no published ports — ever.
+    assert not cloudflared.get("ports"), f"tunnel publishes ports: {cloudflared.get('ports')}"
+
+    # Host networking: the tunnel dials 127.0.0.1:8080 (caddy) and 127.0.0.1:9119
+    # (dashboard) in the host namespace. The host-gateway alias variant would
+    # target the bridge IP, which a loopback-bound dashboard refuses.
+    assert cloudflared.get("network_mode") == "host", (
+        "cloudflared must share the host namespace to reach the loopback services"
+    )
+
+
+def test_tunnel_token_is_not_a_gateway_variable() -> None:
+    """T2.31 env discipline: the tunnel token belongs to cloudflared only."""
+    proc = _render_config()
+
+    assert proc.returncode == 0, f"compose config failed:\n{proc.stderr}"
+    gateway_env = yaml.safe_load(proc.stdout)["services"]["gateway"].get("environment") or {}
+    assert "TUNNEL_TOKEN" not in gateway_env and "CLOUDFLARE_TUNNEL_TOKEN" not in gateway_env
+
+
+def test_dashboard_exposure_env_is_passthrough_only() -> None:
+    """T2.31: HERMES_DASHBOARD + its basic-auth pair are bare passthrough entries —
+    no values in files, rendered null offline, keys exactly pinned."""
+    proc = _render_config()
+
+    assert proc.returncode == 0, f"compose config failed:\n{proc.stderr}"
+    environment = yaml.safe_load(proc.stdout)["services"]["gateway"].get("environment") or {}
+    for key in (
+        "HERMES_DASHBOARD",
+        "HERMES_DASHBOARD_BASIC_AUTH_USERNAME",
+        "HERMES_DASHBOARD_BASIC_AUTH_PASSWORD",
+    ):
+        assert key in environment, f"{key} missing from the gateway env"
+        assert environment[key] is None, f"{key} must render null offline (no values in files)"

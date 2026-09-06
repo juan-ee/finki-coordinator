@@ -59,6 +59,11 @@ services:
       - TELEGRAM_GROUP_ALLOWED_CHATS
       - TELEGRAM_GROUP_ALLOWED_USERS
       - OPENROUTER_API_KEY
+      # Dashboard exposure (T2.31): Hermes' built-in dashboard with its fail-closed
+      # basic-auth gate (proposal §12). Bare passthrough — values live in .env only.
+      - HERMES_DASHBOARD
+      - HERMES_DASHBOARD_BASIC_AUTH_USERNAME
+      - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD
       # No Drive/rclone variables (v6/v7): the agent reaches Drive through Hermes'
       # built-in google-workspace skill ($GAPI) — agent-driven setup, skill-managed
       # credential, nothing Drive-related passes through compose.
@@ -80,3 +85,23 @@ services:
       # Loopback bind only: the site is reachable on the Pi itself at :8080; the
       # tunnel is the only path to it from outside.
       - "127.0.0.1:8080:80"
+
+  # v7 (T2.31): the outbound-only Cloudflare Tunnel. cloudflared dials Cloudflare's
+  # edge — NO inbound ports, ever (proposal §5/§12). Host networking (same shape as
+  # the gateway) lets the tunnel reach BOTH loopback services directly: the public
+  # hostnames configured in the Cloudflare dashboard map kb.* → http://127.0.0.1:8080
+  # (caddy) and board.* → http://127.0.0.1:9119 (the dashboard, loopback-bound per
+  # §12 — a bridge-network tunnel with the host-gateway alias could NOT reach a
+  # loopback-bound socket, review finding T2.31). Remotely managed: the token comes
+  # from .env (CLOUDFLARE_TUNNEL_TOKEN); no tunnel config lives in files. Access
+  # (Google SSO, team only) gates both hostnames at the edge; the dashboard's
+  # basic-auth gate stays on as the second layer.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: hermes-tunnel
+    restart: unless-stopped
+    network_mode: host
+    command: tunnel --no-autoupdate run
+    environment:
+      # Interpolated from the runtime environment (.env); renders empty offline.
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
