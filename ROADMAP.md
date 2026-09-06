@@ -496,7 +496,7 @@ Pi/human; the agent only produces/refreshes the verification script.
   `schedules.md` → `schedules/SKILL.md` for the uniform glob. Review: no hard
   violations after one fix round; Notes log carries the judgement calls and the
   record-only salvage note.)*
-- [ ] **T2.26 `fix` — Google-token permissions + in-container one-shot ergonomics**
+- [x] **T2.26 `fix` — Google-token permissions + in-container one-shot ergonomics**
   *(surfaced by the phase-2 gate 2026-09-05)* — the token file
   (`~/.hermes/google_token.json`) ended up root-owned mid-run, breaking every
   refresh write by the runtime uid (the agent improvised a shadow-HERMES_HOME
@@ -517,6 +517,13 @@ Pi/human; the agent only produces/refreshes the verification script.
   checks), add the guard to setup.sh's printout, and evaluate pinning the exec
   user at the compose level. Tests: transport pre-flight rejects
   an unwritable token (chmod in tmp_path); setup.sh smoke asserts the check line.
+  *(Done 2026-09-06 — both review axes and both fix-delta re-reviews clean, fixed
+  point 40b137e. The spec's "dual interpreter" parenthetical superseded on
+  empirical evidence: the container's default `python3` IS the Hermes venv and
+  image-ships googleapiclient — the pinned one-shot is the single-interpreter
+  T2.23 subprocess form, the split forbidden. Compose-level exec-user verdict:
+  not implementable (docker-compose.yml comment + Notes). T4.2 pointer added.
+  Judgement calls, residuals and Pi evidence in the Notes log.)*
 
 ## Phase 3 — Persona
 
@@ -565,6 +572,61 @@ Pi/human; the agent only produces/refreshes the verification script.
 ## Notes log
 
 *(agents append here: date, task, deviation/observation)*
+
+- 2026-09-06 T2.26 — Google-token permissions + in-container one-shot ergonomics.
+  Review verdict: no hard violations after one fix round (two fresh axes, fixed
+  point 40b137e; both fix-delta re-reviews clean — 0 unresolved). The round: the
+  compose exec-user evaluation verdict got its durable artifact (the Spec axis's
+  one hard finding, on (f)) — docker-compose.yml now records it; T4.2's block
+  gained the deferred-runbook pointer (Spec (e) recommendation); setup.sh warns on
+  root-with-HERMES_UID-unset and on non-numeric HERMES_UID/HERMES_GID (the latter
+  previously aborted the whole script in set -u arithmetic — reproduced, after
+  steps 1-7 had already applied); tests root-proofed (explicit euid/egid
+  injection; skipif(root) where the scripted root branch legitimately differs).
+  Arbitrations: (1) the spec's "dual interpreter (Hermes venv for the coordinator
+  imports, gapi venv for the CLI)" parenthetical was the gate's disproved
+  hypothesis — verified empirically in-container (read-only, uid 1000): the
+  default `python3` IS the Hermes venv (/opt/hermes/.venv/bin/python3, first on
+  PATH) and image-ships googleapiclient (site-packages dated the 2026-09-02
+  build day); /usr/bin/python3 (same 3.13.5) lacks it; the bot-created
+  /opt/data/venvs/gapi (2026-09-05 19:54Z) duplicates what the image provides.
+  The operative spec clause — "reuse the T2.23 freshness-gate subprocess form" —
+  is single-interpreter ([sys.executable, script_path], hermes_plugin.py), and the
+  documented one-shot with the container's default python3 was re-verified live
+  (dry-run, exit 0, real Drive listing). The skill/gate/docstring pins therefore
+  state ONE interpreter and forbid the split. (2) Compose-level exec-user verdict
+  ((f) evaluation): NOT implementable — the compose spec has no exec-user key
+  (exec inherits the container's user; root here because the upstream s6
+  entrypoint must start as root to drop to HERMES_UID/GID), and a service-level
+  `user:` would break that privilege drop. Guard = documentation (setup.sh 8/8
+  printout) + the 8/8 check + the sync pre-flight; no implementation, per the
+  task's "implementation only if owner approves" and the negative verdict.
+  Judgement calls: (a) the sync pre-flight predicates on the process euid (no
+  HERMES_UID knob) and fires for --dry-run too — deliberate: a dry-run still
+  lists via the CLI, which can trigger a token refresh write; on divergent
+  topologies (operator uid ≠ container uid) setup.sh 8/8 is the parameterized
+  backstop; (b) the bash/python writability arithmetic exists twice (lockstep
+  debt recorded; mode rendering aligned to bare octal on both sides; no
+  cross-language equivalence test); (c) supplementary groups are not consulted in
+  either implementation (the real shapes are owner-euid or root-owned — the
+  incident class); (d) the dry-run-with-broken-token smoke test remains
+  root-fragile (recorded per the Standards delta reviewer; same skipif pattern
+  would cover it in a later round); (e) out-of-scope one-shot references left
+  untouched (proposal.md §8.1 and docker/README.md still carry the bare one-shot
+  without the interpreter pin — neither is a named file of this task); (f) the
+  T2.25 note's historical "[n/7]" text stays as history after the /8 renumber.
+  Residual hazard recorded, NOT actioned (rule 8): the host-side docker transport
+  (GapiCliTransport._run — the `make sync` path) execs the CLI WITHOUT --user, so
+  a mid-run token refresh from that path can still root-own the token; the
+  pre-flight converts the NEXT run into the loud remedy, and the nightly
+  in-container cron runs as uid 1000 — a --user-aware transport is a possible
+  small follow-up.
+  Pi follow-through: git pull + `uv run ./scripts/setup.sh` (env keys exported by
+  grep — the dead `[gdrive]` stanza still breaks `source .env`); step 8/8 on the
+  live token expected to print ok (owner 1000, mode 600); the updated knowledge
+  SKILL.md lands at ~/.hermes/skills/coordinator-knowledge/SKILL.md byte-identical
+  (no restart). Runtime acceptance of the changed one-shot line (the bot running
+  the pinned interpreter form after an upload) rides the gate's step-6 digest run.
 
 - 2026-09-06 T2.25 — prompt hardening + template-owned skills install. Review verdict:
   no hard violations after one fix round (two fresh axes, fixed point 00e3f9ee; fix
