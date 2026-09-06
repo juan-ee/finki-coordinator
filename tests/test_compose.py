@@ -120,3 +120,51 @@ def test_hermes_ref_appears_in_rendered_config() -> None:
     assert proc.returncode == 0, f"compose config failed:\n{proc.stderr}"
     assert ref, f"{HERMES_REF_FILE} is empty"
     assert ref in proc.stdout, f"pinned ref {ref!r} not in rendered config"
+
+
+# --- T2.30: the static site file-server (caddy) ----------------------------------------
+
+
+def test_caddy_service_serves_the_site_read_only_on_loopback() -> None:
+    """T2.30: a caddy file-server mounts data/site read-only and binds 127.0.0.1:8080.
+
+    The site is rendered from the Pi-local record; exposure beyond loopback happens
+    only through the cloudflared tunnel (T2.31) — never a published port.
+    """
+    proc = _render_config()
+
+    assert proc.returncode == 0, f"compose config failed:\n{proc.stderr}"
+    config = yaml.safe_load(proc.stdout)
+    caddy = (config.get("services") or {}).get("caddy")
+    assert caddy is not None, "caddy service missing"
+
+    volumes = caddy.get("volumes") or []
+    site_mounts = [
+        v
+        for v in volumes
+        if str(v.get("target", "")) == "/usr/share/caddy"
+        and v.get("read_only") is True
+        and str(v.get("source", "")).endswith("/data/site")
+    ]
+    assert site_mounts, f"read-only data/site mount missing; rendered volumes: {volumes}"
+
+    ports = caddy.get("ports") or []
+    loopback = [
+        p
+        for p in ports
+        if str(p.get("host_ip", "")) == "127.0.0.1"
+        and str(p.get("published", "")) == "8080"
+        and str(p.get("target", "")) == "80"
+    ]
+    assert loopback, f"caddy must bind 127.0.0.1:8080->80 only; rendered ports: {ports}"
+    assert len(ports) == 1, f"caddy binds unexpected extra ports: {ports}"
+
+
+def test_gateway_service_publishes_no_ports() -> None:
+    """T2.30 guard: the gateway stays host-networked with no published ports — the
+    'no inbound ports' property holds as services are added (proposal §5)."""
+    proc = _render_config()
+
+    assert proc.returncode == 0, f"compose config failed:\n{proc.stderr}"
+    gateway = yaml.safe_load(proc.stdout)["services"]["gateway"]
+    assert not gateway.get("ports"), f"gateway publishes ports: {gateway.get('ports')}"

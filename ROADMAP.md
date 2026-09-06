@@ -71,7 +71,7 @@ knowledge_search) is deleted. Invariants: **git safety net · synthesis-vs-copy-
   under `docs/`, read back with file tools, and Drive is never treated as live
   truth. Tests: setup.sh smoke (docs/ exists, git repo initialized); prompt
   assertions carry the copy-pipe rule.
-- [ ] **T2.30 — MkDocs Material site + caddy** — `make site-build` (docker
+- [x] **T2.30 — MkDocs Material site + caddy** — `make site-build` (docker
   `squidfunk/mkdocs-material`, arm64) builds `data/site/` from `data/project/docs/`;
   compose adds a `caddy` file-server service (read-only site mount, bound to
   127.0.0.1:8080); rebuild = host crontab line installed by setup.sh (every 15 min,
@@ -240,3 +240,39 @@ Log new judgement calls and residuals here, newest first.
   persona/generator/README accepted (distinct audiences; drift tracked here) and the
   setup.sh extract-function suggestion noted, not taken (linear first-boot
   sequence).
+
+- 2026-09-06 (T2.30): implementation: repo-root `mkdocs.yml` (template-owned;
+  docs_dir data/project/docs, site_dir data/site, exclude_docs .git/.gitignore/.DS_Store),
+  `make site-build` docker-pinned, caddy compose service (ro site mount, 127.0.0.1:8080),
+  setup.sh step 9/9 installs the */15 site-build crontab line (marker-idempotent;
+  crontab-absent → loud manual line). Judgement calls: (a) **--user in the site-build
+  recipe**: the first Pi fixture run (root container) wrote the site root-owned — the
+  recipe now maps the host uid so data/site stays user-owned (rebuilds and cleanup
+  work without sudo); caught by running the fixture on the Pi, not locally (the local
+  docker daemon is off). (b) mkdocs.yml lives at the repo root, NOT inside the record
+  repo — the record stays pure content; the site config is template infrastructure.
+  (c) tests/test_site_build.py is opt-in (RUN_SITE_BUILD_TEST=1 + docker + image) —
+  the default suite stays offline/fast (rule 9); **fixture-build evidence (Pi,
+  arm64, uid 1000): mkdocs-material build clean in 0.38s, index + howto pages
+  rendered, zero .git/.gitignore/.DS_Store leak, user-owned output, rm -rf ok.**
+  (d) step banners renumbered to /9 per the T1.7/T2.12/T2.25/T2.26 precedent.
+  **Review verdicts (fresh dual-axis, fixed point badf25d):** Spec + Standards both
+  found a REAL hard violation, FIXED in-round: the Makefile recipe used bare
+  `$(id -u)` — make swallows it as a variable, so the shipped recipe was
+  `--user ":"` and the test pinned the bug (the Pi evidence had run the raw docker
+  command, not `make`). Fixed to `$$(id -u):$$(id -g)` (make -n verified) and the
+  pin updated with the why. Also fixed in-round: (1) a splice accident had DELETED
+  the `printf | crontab -` install line — restored; (2) the fixture build now loads
+  the COMMITTED mkdocs.yml and asserts its v7 shape (docs_dir/site_dir/theme/
+  exclude_docs) instead of a private copy; (3) `crontab -l` now distinguishes
+  "no crontab yet" from real failures (a blind `|| true` could clobber the
+  operator's crontab — the stateful test shim feeds the stored crontab back on -l);
+  (4) cron-line paths quoted. Judgement calls recorded: floating image tags
+  (`caddy:2`, `squidfunk/mkdocs-material`) kept — HERMES_REF-style pinning is an
+  owner upgrade decision, residual noted; `test_gateway_service_publishes_no_ports`
+  guards a proposal §5 property (borderline scope, kept — it pins "no inbound
+  ports" as services are added); `data/site-build.log` (cron redirect target) is
+  under gitignored data/; the `*/15` cron is a fixed UTC interval (TZ-invariant —
+  no scheduling-law arithmetic outside scheduling.py). Process incident: the first
+  install-line splice accidentally dropped the crontab call and one debug run
+  wrote to the REAL crontab — cleaned (it was empty before; verified 0 lines).

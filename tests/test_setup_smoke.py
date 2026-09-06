@@ -122,17 +122,22 @@ def test_dry_run_exits_zero_writes_nothing_and_leaks_no_secrets(tmp_path: Path) 
         assert str(hermes_home / "skills" / f"coordinator-{name}" / "SKILL.md") in stdout, (
             f"dry-run plan misses the coordinator-{name} install"
         )
-    # Renumber precedent (T1.7/T2.12/T2.25/T2.26): every step banner carries the
+    # Renumber precedent (T1.7/T2.12/T2.25/T2.26/T2.30): every step banner carries the
     # current total, so the printed plan can never contradict the docstring's list.
-    for n in range(1, 9):
-        assert f"[{n}/8]" in stdout, f"step banner [{n}/8] missing from the dry-run plan"
+    for n in range(1, 10):
+        assert f"[{n}/9]" in stdout, f"step banner [{n}/9] missing from the dry-run plan"
 
     # T2.26 (b)/(f): the plan must carry the Google-token permission check and the
     # exec-user guard (docker compose exec defaults to root in this container).
-    assert "== [8/8] Google token permissions" in stdout
+    assert "== [8/9] Google token permissions" in stdout
     assert "google_token.json" in stdout
     assert "docker compose exec --user" in stdout
     assert "ROOT" in stdout
+
+    # T2.30: the plan must carry the site-rebuild crontab line (every 15 min, UTC —
+    # dumb and LLM-free), installed idempotently by marker.
+    assert "== [9/9] Site rebuild cron" in stdout
+    assert "*/15 * * * *" in stdout and "site-build" in stdout
 
     for value in SECRET_VALUES:
         assert value not in stdout + proc.stderr, "dry-run echoed a secret value"
@@ -530,3 +535,72 @@ def test_dry_run_plans_docs_git_repo_but_writes_nothing(tmp_path: Path) -> None:
     assert proc.returncode == 0, f"dry-run failed:\n{proc.stdout}\n{proc.stderr}"
     assert "git repo" in proc.stdout, "dry-run plan misses the docs git-init step"
     assert _snapshot(tmp_path) == before, "dry-run wrote under tmp roots"
+
+
+# --- T2.30: the site-rebuild crontab line (step 9/9) ------------------------------------
+
+
+def _site_cron_env(tmp_path: Path) -> dict[str, str]:
+    """Real-mode env with a stateful crontab shim on PATH.
+
+    The shim mimics the operator interface: '-l' prints the stored crontab (or the
+    standard 'no crontab for <user>' stderr + exit 1 when none exists — setup.sh
+    must treat exactly that case as empty, never any other failure); installs
+    (stdin) replace the store. Invocations and installed lines hit CRONTAB_LOG.
+    """
+    shim_dir = tmp_path / "shim"
+    shim_dir.mkdir(parents=True, exist_ok=True)
+    shim = shim_dir / "crontab"
+    shim.write_text(
+        "#!/usr/bin/env bash\n"
+        'DB="$CRONTAB_DB"\n'
+        'echo "ARGS: $*" >> "$CRONTAB_LOG"\n'
+        'if [[ "$1" == "-l" ]]; then\n'
+        '  if [[ -f "$DB" ]]; then cat "$DB"; exit 0; fi\n'
+        '  echo "no crontab for $USER" >&2\n'
+        "  exit 1\n"
+        "fi\n"
+        'cat > "$DB"\n'
+        'echo "--- installed ---" >> "$CRONTAB_LOG"\n'
+        'cat "$DB" >> "$CRONTAB_LOG"\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    shim.chmod(0o755)
+    (tmp_path / "crontab-db").touch()
+    env = _real_mode_env(tmp_path)
+    env["PATH"] = f"{shim_dir}{os.pathsep}{env['PATH']}"
+    env["CRONTAB_LOG"] = str(tmp_path / "crontab.log")
+    env["CRONTAB_DB"] = str(tmp_path / "crontab-db")
+    return env
+
+
+def test_real_mode_installs_the_site_rebuild_crontab_line(tmp_path: Path) -> None:
+    """Real mode appends the marker + */15 site-build line through crontab (shimmed)."""
+    env = _site_cron_env(tmp_path)
+
+    proc = _run_setup(env)
+
+    assert proc.returncode == 0, f"real run failed:\n{proc.stdout}\n{proc.stderr}"
+    log = Path(env["CRONTAB_LOG"]).read_text(encoding="utf-8")
+    assert "ARGS: -l" in log, "setup.sh must read the existing crontab first"
+    installed = log.split("ARGS:", 1)[-1]
+    assert "*/15 * * * *" in installed, "the 15-minute schedule is missing"
+    assert "site-build" in installed, "the rebuild command is missing"
+    assert "hermes-coordinator" in installed, "the idempotency marker is missing"
+
+
+def test_real_mode_site_cron_install_is_idempotent(tmp_path: Path) -> None:
+    """A second run must not duplicate the cron line (marker-matched, shim records all)."""
+    env = _site_cron_env(tmp_path)
+    first = _run_setup(env)
+    assert first.returncode == 0, first.stderr
+
+    second = _run_setup(env)
+
+    assert second.returncode == 0, second.stderr
+    log = Path(env["CRONTAB_LOG"]).read_text(encoding="utf-8")
+    # The stateful shim feeds the stored crontab back on -l, so the second run must
+    # find the marker and install nothing new: exactly one install in the log.
+    installs = log.count("*/15 * * * *")
+    assert installs == 1, f"expected exactly one cron install, got {installs}"

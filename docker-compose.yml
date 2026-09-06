@@ -64,3 +64,19 @@ services:
       # credential, nothing Drive-related passes through compose.
     # Gateway command per upstream compose.
     command: ["gateway", "run"]
+
+  # v7 (T2.30): the static knowledge site — caddy serves the rendered record
+  # (data/site, rebuilt by make site-build / the host crontab line) on host loopback
+  # only. Exposure beyond the Pi happens through the cloudflared tunnel (T2.31),
+  # never a published port.
+  caddy:
+    image: caddy:2
+    container_name: hermes-docs-site
+    restart: unless-stopped
+    volumes:
+      # The rendered site (output of make site-build), served read-only.
+      - ./data/site:/usr/share/caddy:ro
+    ports:
+      # Loopback bind only: the site is reachable on the Pi itself at :8080; the
+      # tunnel is the only path to it from outside.
+      - "127.0.0.1:8080:80"

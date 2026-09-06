@@ -67,6 +67,21 @@ needs no sync. The v7-era scheduled job is the **daily 03:00 UTC Drive backup**
 `docker compose config` is valid while `data/` does not exist yet — bind mounts
 are only materialized at `up`.
 
+## The static knowledge site (v7, T2.30)
+
+The record (`data/project/docs/`) renders to a static site: `make site-build` runs
+[`squidfunk/mkdocs-material`](https://hub.docker.com/r/squidfunk/mkdocs-material)
+(arm64) in docker against the committed `mkdocs.yml` and writes `data/site/`. The
+compose `caddy` service serves `data/site/` **read-only** on host loopback
+`127.0.0.1:8080` — nothing is published beyond the Pi. The rebuild path is dumb and
+LLM-free (rule-11 spirit): a host crontab line (installed idempotently by
+`setup.sh` step 9/9, every 15 min UTC) runs `make site-build`; run it by hand any
+time for an on-demand rebuild. First use: `docker pull squidfunk/mkdocs-material`
+(or let the first build pull it).
+
+> The record itself (`data/project/docs/`) is the agent's to write — the site is a
+> pure render of it. Never edit `data/site/` by hand: the next rebuild overwrites it.
+
 Note: upstream's compose also defines a localhost-only `dashboard` service;
 this template intentionally ships the `gateway` service only (all interaction
 is via Telegram).

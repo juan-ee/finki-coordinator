@@ -1,0 +1,14 @@
+# MkDocs Material config for the Pi-local knowledge record (v7, T2.30).
+# Built by `make site-build` (docker squidfunk/mkdocs-material, arm64) and the host
+# crontab line installed by setup.sh step 9/9 (every 15 min, UTC — dumb and
+# LLM-free, rule-11 spirit). docs/ is the record; this file is template-owned.
+site_name: Knowledge Base
+docs_dir: data/project/docs
+site_dir: data/site
+use_directory_urls: true
+theme:
+  name: material
+exclude_docs: |
+  .git/
+  .gitignore
+  .DS_Store
