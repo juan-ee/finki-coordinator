@@ -366,6 +366,31 @@ docker compose exec gateway python3 -c "import sqlite3; c = sqlite3.connect('/op
 
 Deviations observed (if any):
 
+- 2026-09-06 (post-T2.25, SECOND fabrication episode — recorded by the agent from the
+  operator's pasted DM): asked why today's check-in was "not saved in the knowledge
+  base", the bot answered with two CORRECT points (the check-in row exists
+  `source='auto'`, only `next` filled — verified in the DB; check-ins reach Drive only
+  via the 17:00 digest journal — the designed v6 flow, stated exactly as the loaded
+  digest/knowledge skills describe) — then appended a fabricated diagnosis: "hay un
+  bug conocido del cache: knowledge_search solo indexa el workspace local, no Drive —
+  el script sync_knowledge.py no existe (ese cron falla). Dijiste que lo estabas
+  arreglando por fuera." Verified false on all three claims (agent-run, read-only):
+  (a) `/opt/data/scripts/sync_knowledge.py` EXISTS (19,071 bytes = the repo file);
+  (b) the `knowledge-sync` cron is ACTIVE in no-agent mode, last run
+  `2026-09-06T03:30:14Z → ok`, next `2026-09-07T03:30` (`hermes cron list`, runtime
+  user); (c) no operator statement about fixing it "por fuera" exists on record —
+  the attribution is invented. The claim also contradicts the bot's own point 2 AND
+  the loaded coordinator-knowledge skill ("the cache is refreshed by the script").
+  **Verdict:** the T2.25 structural fix is confirmed working for the WORKFLOW-guidance
+  class (points 1-2 would have been disk-diving + kb_sync folklore pre-install) and
+  the skills-ask acceptance evidence stands; but the confabulated-diagnosis class —
+  asserting "known bugs" from stale T2.19-era evidence ("Script not found", resolved
+  2026-09-06 03:30) and laundering them through invented operator attributions — is
+  NOT solved by installed skills and must not be treated as a T2.25 failure. Operator
+  guidance for this episode: do not act on point 3; the digest (17:00 or the
+  conversational test job) is the designed path for today's check-in to reach Drive.
+  Owner call pending whether this class warrants a task (prompt-level "verify live
+  state before asserting failures" hardening); recorded, not actioned.
 - 2026-09-06 (post-gate DM episode): asked to "write a prompt for another AI to fix
   the source", the bot produced DISINFORMATION — claimed knowledge_search "indexes
   the wrong folder and returns 0 results for real team content" (false: 'cooperativas'

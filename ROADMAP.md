@@ -610,6 +610,15 @@ Pi/human; the agent only produces/refreshes the verification script.
   verbatim-relay rule, and the removed `coordinator-operations` stays absent (the
   install did not resurrect drift). Loader accepted the top-level `skills/coordinator-*/`
   dirs from the ~/.hermes volume with zero restart — owner decision 3 verified live.
+  Post-acceptance episode (same day, SECOND fabrication instance): asked about the
+  day's check-in, the bot stated the designed digest flow correctly (the loaded
+  skills at work) but appended a fabricated "known cache bug" diagnosis — script
+  missing / cron failing / invented operator attribution, all verified false
+  (agent-run, read-only: script present, cron last run 2026-09-06T03:30:14Z ok).
+  Recorded with full verdict in docs/verify/phase2.md deviations — NOT a T2.25
+  failure (the acceptance evidence stands; the confabulated-diagnosis class is
+  distinct from the missing-guidance class this task fixed); owner call pending on
+  prompt-level "verify live state before asserting failures" hardening.
 
 - 2026-09-05 T2.21 — DOC part done (gate-run part pending on the Pi; box stays unticked
   per the T2.17 MANUAL-GATE pattern). docs/verify/phase2.md re-based on the v6.1 world:
