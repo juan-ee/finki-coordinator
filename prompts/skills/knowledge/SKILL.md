@@ -42,10 +42,10 @@ read via $GAPI. After a Drive-side deletion, chunks stay cached until the next
 ## Writing: upload, then sync (mandatory write-through)
 
 - Journals and digests: write locally under `journal/`, then upload to the Drive-side
-  `journal/` folder in the knowledge-base root via $GAPI drive upload — that folder
-  exists and is the designed destination; never guess another folder and never drop
-  journal files in the Drive root. If the upload fails, say so in one line at the end
-  of the journal entry — drift must be visible, not silent.
+  `journal/` folder in the knowledge-base root via $GAPI drive upload — the designed
+  destination; if that folder is missing, create it there first. Never invent another
+  folder and never drop journal files in the Drive root. If the upload fails, say so
+  in one line at the end of the journal entry — drift must be visible, not silent.
 - **After EVERY successful upload, make the new document findable: run the sync
   one-shot via your shell tool — `python3 /opt/data/scripts/sync_knowledge.py`**
   (the in-container equivalent of the host's `make sync`), then report the counts

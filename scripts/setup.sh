@@ -55,7 +55,7 @@ for arg in "$@"; do
 done
 
 step_env_check() {
-  echo "== [1/6] Required env keys (names only; values are never printed) =="
+  echo "== [1/7] Required env keys (names only; values are never printed) =="
   local missing=() key
   for key in "${REQUIRED_KEYS[@]}"; do
     if [[ -n "${!key:-}" ]]; then
@@ -78,7 +78,7 @@ step_env_check() {
 }
 
 step_validate_config() {
-  echo "== [2/6] Validate config/config.yaml (python -m coordinator.config validate) =="
+  echo "== [2/7] Validate config/config.yaml (python -m coordinator.config validate) =="
   if [[ ! -f "$CONFIG_YAML" ]]; then
     if [[ "$DRY_RUN" -eq 1 ]]; then
       echo "  WARNING: $CONFIG_YAML not found (the repo ships config/config.example.yaml only)"

@@ -115,6 +115,10 @@ def test_dry_run_exits_zero_writes_nothing_and_leaks_no_secrets(tmp_path: Path) 
         assert str(hermes_home / "skills" / f"coordinator-{name}" / "SKILL.md") in stdout, (
             f"dry-run plan misses the coordinator-{name} install"
         )
+    # Renumber precedent (T1.7/T2.12/T2.25): every step banner carries the current
+    # total, so the printed plan can never contradict the docstring's step list.
+    for n in range(1, 8):
+        assert f"[{n}/7]" in stdout, f"step banner [{n}/7] missing from the dry-run plan"
 
     for value in SECRET_VALUES:
         assert value not in stdout + proc.stderr, "dry-run echoed a secret value"
