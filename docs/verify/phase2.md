@@ -274,7 +274,7 @@ docker compose exec gateway python3 -c "import sqlite3; c = sqlite3.connect('/op
       bypassing the CLI), and the documented in-container one-shot invocation is
       not self-sufficient (dual-interpreter problem) — the bot composed PATHs to
       make it work. Both feed T2.26.
-- [ ] **DOWN proof of the round trip:** in the Drive web UI, append a line containing
+- [x] **DOWN proof of the round trip:** in the Drive web UI, append a line containing
       a third distinctive phrase (record: ____________) to the uploaded note → the
       refresh happens through the SYSTEM's own path: wait out the freshness TTL
       (10 min) and DM the search — the T2.23 read gate runs the deterministic sync
@@ -289,6 +289,15 @@ docker compose exec gateway python3 -c "import sqlite3; c = sqlite3.connect('/op
       removed, and the fresh session had no workflow guidance mapping a
       knowledge-base ask to the tool (SOUL.md rule 6 alone didn't carry it).
       Re-ask with the tool named explicitly to close the box.
+      **↻ Attempt 3 (operator named the sync mental model) — PASS:** the bot called
+      `knowledge_search`; the T2.23 freshness gate fired (TTL long elapsed) — the
+      deterministic sync ingested the edited journal (ingested 1, watermark
+      20:16Z, reported in the reply) — the FTS hit `journal/2026-09-05.md`, and
+      the bot confirmed the phrase against the LIVE Drive original before quoting.
+      The DOWN proof ran through the system's own path with ZERO manual commands —
+      the designed v6.1 behavior. Honest caveat: it took operator teaching to get
+      there (attempt 1 disk-dived; attempt 2 clarified the scope was local-only) —
+      the repo-skills-not-installed gap is the root cause (T2.25).
 
 ## 6. Digest end-to-end
 
@@ -357,6 +366,20 @@ docker compose exec gateway python3 -c "import sqlite3; c = sqlite3.connect('/op
 
 Deviations observed (if any):
 
+- 2026-09-06 (post-gate DM episode): asked to "write a prompt for another AI to fix
+  the source", the bot produced DISINFORMATION — claimed knowledge_search "indexes
+  the wrong folder and returns 0 results for real team content" (false: 'cooperativas'
+  → 8 FTS hits, verified), cited stale cron logs ("Script not found") from the
+  T2.19-era 13:00:55Z failed run as CURRENT state (the job has been ok since
+  13:02:52Z and ran ok again 2026-09-06 03:30), and proposed rebuilding the sync
+  script that exists and works / re-opening the agent-mediated indexing that hard
+  rule 11 deliberately rejects. Verdict recorded as an operability finding: without
+  installed workflow skills the bot fabricates diagnoses from stale evidence —
+  T2.25 is the structural fix. The disinformation prompt file it wrote into the
+  agent workspace (data/workspace/knowledge-sync-pr*.md) is flagged for deletion;
+  0 hits for 'brief'/'mission' are CORRECT behavior (those words do not exist in
+  the corpus — and the team brief itself is owner content still missing from
+  Drive, proposal step 8).
 - 2026-09-05 (step-3 run) — **RUNTIME DRIFT BUNDLE** (root cause of the step-3 fail):
   (a) runtime `~/.hermes/SOUL.md` is STALE — 142 lines vs the repo persona's 157; it
   predates the T2.8/T2.9/T2.16 persona additions (knowledge rule 6, onboarding rule).
