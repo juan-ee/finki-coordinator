@@ -379,7 +379,11 @@ Deviations observed (if any):
   agent workspace (data/workspace/knowledge-sync-pr*.md) is flagged for deletion;
   0 hits for 'brief'/'mission' are CORRECT behavior (those words do not exist in
   the corpus — and the team brief itself is owner content still missing from
-  Drive, proposal step 8).
+  Drive, proposal step 8). CLEANUP (owner-approved, agent-run): the disinformation
+  prompt file (`data/knowledge-sync-prompt.md`, 4 KB) DELETED, and an orphaned
+  credential copy the workaround left in the agent workspace
+  (`data/google_token_copy.json`, 404 bytes, zero references anywhere) DELETED —
+  `data/` restored to `hermes/` + `project/` only.
 - 2026-09-05 (step-3 run) — **RUNTIME DRIFT BUNDLE** (root cause of the step-3 fail):
   (a) runtime `~/.hermes/SOUL.md` is STALE — 142 lines vs the repo persona's 157; it
   predates the T2.8/T2.9/T2.16 persona additions (knowledge rule 6, onboarding rule).
